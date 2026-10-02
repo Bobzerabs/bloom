@@ -43,6 +43,8 @@ interface DockTabProps {
 	toggleDockPreview: () => void;
 	dockIconOnly: boolean;
 	toggleDockIconOnly: () => void;
+	dockTrayEnabled: boolean;
+	toggleDockTray: () => void;
 	dockAdaptive: boolean;
 	toggleDockAdaptive: () => void;
 	dockWinNumberEnabled: boolean;
@@ -60,6 +62,8 @@ export function DockTab({
 	toggleDockPreview,
 	dockIconOnly,
 	toggleDockIconOnly,
+	dockTrayEnabled,
+	toggleDockTray,
 	dockAdaptive,
 	toggleDockAdaptive,
 	dockWinNumberEnabled,
@@ -110,6 +114,17 @@ export function DockTab({
 						<SettingRow icon={Eye} label="Show App Previews" desc="Show window thumbnails on hover">
 							<label className="toggle-switch">
 								<input type="checkbox" checked={dockPreviewEnabled} onChange={toggleDockPreview} />
+								<span className="slider"></span>
+							</label>
+						</SettingRow>
+
+						<SettingRow
+							icon={Eye}
+							label="System Tray Buttons"
+							desc="Show hidden icons, network, sound and notification buttons in the dock"
+						>
+							<label className="toggle-switch">
+								<input type="checkbox" checked={dockTrayEnabled} onChange={toggleDockTray} />
 								<span className="slider"></span>
 							</label>
 						</SettingRow>

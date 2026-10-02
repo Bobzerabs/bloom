@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, memo } from "react";
+import { useState, useEffect, useMemo, useRef, memo, type ReactElement } from "react";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -88,6 +88,9 @@ const Dock = memo(function Dock() {
 	);
 	const [dockAdaptive, setDockAdaptive] = useState(
 		() => localStorage.getItem("bloom-dock-adaptive") === "true"
+	);
+	const [dockTrayEnabled, setDockTrayEnabled] = useState(
+		() => localStorage.getItem("bloom-dock-tray-enabled") !== "false"
 	);
 	const [startIcon, setStartIcon] = useState(
 		() => localStorage.getItem("bloom-start-icon") || "default"
@@ -262,6 +265,9 @@ const Dock = memo(function Dock() {
 			const adaptive = getVal("bloom-dock-adaptive", "false");
 			setDockAdaptive(adaptive === "true");
 
+			const trayEnabled = getVal("bloom-dock-tray-enabled", "true");
+			setDockTrayEnabled(trayEnabled !== "false");
+
 			const startIconVal = getVal("bloom-start-icon", "default") || "default";
 			setStartIcon(startIconVal);
 
@@ -309,6 +315,7 @@ const Dock = memo(function Dock() {
 		"bloom-dock-preview-enabled": setDockPreviewEnabled,
 		"bloom-dock-icon-only": setDockIconOnly,
 		"bloom-dock-adaptive": setDockAdaptive,
+		"bloom-dock-tray-enabled": setDockTrayEnabled,
 		"bloom-start-icon": setStartIcon,
 		"bloom-scale": setScale
 	});
@@ -1187,6 +1194,7 @@ const Dock = memo(function Dock() {
 										{app.is_running && <div className="active-indicator" />}
 									</motion.div>
 								))}
+								{dockTrayEnabled && <DockTrayButtons />}
 							</motion.div>
 						)}
 					</AnimatePresence>
@@ -1411,6 +1419,84 @@ const Dock = memo(function Dock() {
 				)}
 			</AnimatePresence>
 		</div>
+	);
+});
+
+// Quick-access buttons that stand in for the native Windows notification area
+// (hidden-icons chevron, network, sound, notifications). Each one asks the
+// backend to open the matching native Windows flyout.
+const TRAY_BUTTONS: { id: string; title: string; command: string; icon: ReactElement }[] = [
+	{
+		id: "tray",
+		title: "Hidden icons",
+		command: "open_system_tray",
+		icon: (
+			<svg viewBox="0 0 24 24" fill="none" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+				<polyline points="6 15 12 9 18 15" />
+			</svg>
+		)
+	},
+	{
+		id: "network",
+		title: "Network",
+		command: "open_wifi_settings",
+		icon: (
+			<svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+				<path d="M5 12.55a11 11 0 0 1 14.08 0" />
+				<path d="M1.42 9a16 16 0 0 1 21.16 0" />
+				<path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+				<line x1="12" y1="20" x2="12.01" y2="20" />
+			</svg>
+		)
+	},
+	{
+		id: "sound",
+		title: "Sound",
+		command: "open_sound_settings",
+		icon: (
+			<svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+				<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+				<path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+				<path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+			</svg>
+		)
+	},
+	{
+		id: "notifications",
+		title: "Notifications",
+		command: "open_notification_center",
+		icon: (
+			<svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+				<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+				<path d="M13.73 21a2 2 0 0 1-3.46 0" />
+			</svg>
+		)
+	}
+];
+
+const DockTrayButtons = memo(function DockTrayButtons() {
+	return (
+		<>
+			<div className="dock-tray-divider" />
+			<div className="dock-tray-group">
+				{TRAY_BUTTONS.map((btn) => (
+					<div
+						key={btn.id}
+						className="dock-icon-wrapper dock-tray-button"
+						onClick={(e) => {
+							e.stopPropagation();
+							invoke(btn.command).catch((err) =>
+								console.error(`Failed to run ${btn.command}:`, err)
+							);
+						}}
+						onContextMenu={(e) => e.stopPropagation()}
+					>
+						<div className="dock-icon">{btn.icon}</div>
+						<div className="tooltip">{btn.title}</div>
+					</div>
+				))}
+			</div>
+		</>
 	);
 });
 

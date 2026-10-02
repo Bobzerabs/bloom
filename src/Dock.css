@@ -809,3 +809,50 @@ body {
 	white-space: nowrap;
 	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
+
+/* System tray shortcuts (hidden icons, network, sound, notifications) */
+.dock-tray-divider {
+	width: 1px;
+	height: 26px;
+	flex-shrink: 0;
+	background: var(--bloom-border, rgba(255, 255, 255, 0.18));
+}
+
+.dock-tray-group {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+}
+
+.dock-tray-button .dock-icon {
+	width: 32px;
+	height: 32px;
+	border-radius: 10px;
+	transition:
+		transform 0.15s ease,
+		background 0.15s ease;
+}
+
+.dock-tray-button:hover .dock-icon {
+	transform: translateY(-2px);
+	background: linear-gradient(135deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0.12) 100%);
+}
+
+.dock-tray-button:active .dock-icon {
+	transform: scale(0.94);
+}
+
+.dock-tray-button .dock-icon svg {
+	width: 18px;
+	height: 18px;
+}
+
+.light-mode .dock-tray-button .dock-icon svg {
+	stroke: rgba(0, 0, 0, 0.75);
+}
+
+.dock-icon-only .dock-tray-button .dock-icon {
+	background: transparent;
+	box-shadow: none;
+}

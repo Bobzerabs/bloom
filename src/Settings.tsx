@@ -199,6 +199,8 @@ function SettingsApp() {
 							toggleDockPreview={settings.toggleDockPreview}
 							dockIconOnly={settings.dockIconOnly}
 							toggleDockIconOnly={settings.toggleDockIconOnly}
+							dockTrayEnabled={settings.dockTrayEnabled}
+							toggleDockTray={settings.toggleDockTray}
 							dockAdaptive={settings.dockAdaptive}
 							toggleDockAdaptive={settings.toggleDockAdaptive}
 							dockWinNumberEnabled={settings.dockWinNumberEnabled}
