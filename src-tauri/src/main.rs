@@ -95,6 +95,7 @@ fn main() {
             open_sound_settings,
             open_notification_center,
             open_system_tray,
+            open_task_manager,
             set_ignore_cursor_events,
             set_window_height,
             resize_settings_window,

@@ -1280,6 +1280,17 @@ const Dock = memo(function Dock() {
 								Add App to Dock...
 							</div>
 							<div
+								className="menu-item"
+								onClick={() => {
+									invoke("open_task_manager").catch((err) =>
+										console.error("Failed to open Task Manager:", err)
+									);
+									closeMenu();
+								}}
+							>
+								Task Manager
+							</div>
+							<div
 								className="menu-item has-submenu"
 								onMouseEnter={() => setActiveSubmenu("bloom")}
 								onMouseLeave={() => setActiveSubmenu(null)}
@@ -1341,6 +1352,17 @@ const Dock = memo(function Dock() {
 								}}
 							>
 								Add App to Dock...
+							</div>
+							<div
+								className="menu-item"
+								onClick={() => {
+									invoke("open_task_manager").catch((err) =>
+										console.error("Failed to open Task Manager:", err)
+									);
+									closeMenu();
+								}}
+							>
+								Task Manager
 							</div>
 							<div
 								className="menu-item has-submenu"
@@ -1558,7 +1580,6 @@ const DockTrayButtons = memo(function DockTrayButtons() {
 								console.error(`Failed to run ${btn.command}:`, err)
 							);
 						}}
-						onContextMenu={(e) => e.stopPropagation()}
 					>
 						<div className="dock-icon">
 							{btn.id === "network" ? <NetworkIcon kind={networkKind} /> : btn.icon}

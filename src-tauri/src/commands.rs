@@ -1941,6 +1941,30 @@ pub fn open_notification_center() {
     }
 }
 
+#[tauri::command]
+pub fn open_task_manager() {
+    unsafe {
+        use windows::Win32::UI::Shell::ShellExecuteW;
+        use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        let wide_open: Vec<u16> = "open".encode_utf16().chain(std::iter::once(0)).collect();
+        let wide_target: Vec<u16> = "taskmgr.exe"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let res = ShellExecuteW(
+            None,
+            windows::core::PCWSTR(wide_open.as_ptr()),
+            windows::core::PCWSTR(wide_target.as_ptr()),
+            None,
+            None,
+            SW_SHOWNORMAL,
+        );
+        if res.0 as usize <= 32 {
+            eprintln!("Failed to open Task Manager: error code {}", res.0 as usize);
+        }
+    }
+}
+
 /// Opens the native Windows tray overflow ("hidden icons") popup.
 ///
 /// `anchor_x` / `anchor_y` are optional viewport coordinates (CSS pixels) of the

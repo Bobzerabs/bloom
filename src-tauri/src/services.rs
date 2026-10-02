@@ -1336,10 +1336,12 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
             Err(_) => return,
         };
         let mut last_brightness = match wmi_con.query::<WmiMonitorBrightness>() {
-            Ok(res) => res
-                .first()
-                .map(|b| b.current_brightness as u32)
-                .unwrap_or(50),
+            Ok(res) => {
+                HAS_WMI_PANEL.store(!res.is_empty(), Ordering::Relaxed);
+                res.first()
+                    .map(|b| b.current_brightness as u32)
+                    .unwrap_or(50)
+            }
             Err(_) => 50,
         };
         CURRENT_BRIGHTNESS.store(last_brightness, Ordering::Relaxed);
@@ -1360,6 +1362,22 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                 }
             }
             std::thread::sleep(std::time::Duration::from_millis(1500));
+        }
+    });
+
+    // Desktop monitors expose no WMI brightness. Read the real value over DDC/CI
+    // once at start-up so the slider begins at the monitor's actual level.
+    let handle_ddc = app_handle.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(3000));
+        if HAS_WMI_PANEL.load(Ordering::Relaxed) {
+            return;
+        }
+        if let Some(brightness) = read_physical_monitors_brightness() {
+            CURRENT_BRIGHTNESS.store(brightness, Ordering::Relaxed);
+            let _ = handle_ddc.emit("brightness-change", BrightnessChangeEvent { brightness });
+        } else {
+            brightness_log("No DDC/CI monitor reported its brightness");
         }
     });
 
@@ -1715,6 +1733,68 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
     tx
 }
 
+/// Raw bindings to the Windows Monitor Configuration API (DDC/CI), used to
+/// control the brightness of external / desktop monitors.
+mod dxva2 {
+    use windows::core::BOOL;
+    use windows::Win32::Graphics::Gdi::HMONITOR;
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    pub struct PhysicalMonitor {
+        pub handle: usize,
+        pub description: [u16; 128],
+    }
+
+    #[link(name = "dxva2")]
+    extern "system" {
+        pub fn GetNumberOfPhysicalMonitorsFromHMONITOR(
+            hmonitor: HMONITOR,
+            count: *mut u32,
+        ) -> BOOL;
+        pub fn GetPhysicalMonitorsFromHMONITOR(
+            hmonitor: HMONITOR,
+            size: u32,
+            array: *mut PhysicalMonitor,
+        ) -> BOOL;
+        pub fn DestroyPhysicalMonitors(size: u32, array: *mut PhysicalMonitor) -> BOOL;
+        pub fn GetMonitorBrightness(
+            hmonitor: usize,
+            min: *mut u32,
+            current: *mut u32,
+            max: *mut u32,
+        ) -> BOOL;
+        pub fn SetMonitorBrightness(hmonitor: usize, value: u32) -> BOOL;
+    }
+}
+
+/// True when the machine has a laptop panel that reports brightness over WMI.
+static HAS_WMI_PANEL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Appends a diagnostic line to `%APPDATA%\bloom\brightness.log` (first 20 only),
+/// so a monitor / laptop that ignores brightness changes can be investigated.
+fn brightness_log(msg: &str) {
+    use std::io::Write;
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static COUNT: AtomicU32 = AtomicU32::new(0);
+    if COUNT.fetch_add(1, Ordering::Relaxed) >= 20 {
+        return;
+    }
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let dir = std::path::Path::new(&appdata).join("bloom");
+        let _ = std::fs::create_dir_all(&dir);
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dir.join("brightness.log"))
+        {
+            let _ = writeln!(file, "{} {}", get_now_ms(), msg);
+        }
+    }
+}
+
+/// Sets the brightness (0-100 %) of every DDC/CI capable monitor, scaling it to
+/// the range each monitor reports.
 fn set_physical_monitors_brightness(brightness: u32) {
     unsafe {
         use windows::core::BOOL;
@@ -1728,42 +1808,38 @@ fn set_physical_monitors_brightness(brightness: u32) {
             lparam: LPARAM,
         ) -> BOOL {
             let brightness = lparam.0 as u32;
-            #[repr(C)]
-            #[derive(Clone, Copy)]
-            struct PHYSICAL_MONITOR {
-                h_physical_monitor: usize,
-                sz_physical_monitor_description: [u16; 128],
-            }
-            #[link(name = "dxva2")]
-            extern "system" {
-                fn GetNumberOfPhysicalMonitorsFromHMONITOR(
-                    hMonitor: HMONITOR,
-                    pdwNumberOfPhysicalMonitors: *mut u32,
-                ) -> BOOL;
-                fn GetPhysicalMonitorsFromHMONITOR(
-                    hMonitor: HMONITOR,
-                    dwPhysicalMonitorArraySize: u32,
-                    pPhysicalMonitorArray: *mut PHYSICAL_MONITOR,
-                ) -> BOOL;
-                fn DestroyPhysicalMonitors(
-                    dwPhysicalMonitorArraySize: u32,
-                    pPhysicalMonitorArray: *mut PHYSICAL_MONITOR,
-                ) -> BOOL;
-                fn SetMonitorBrightness(hMonitor: usize, dwNewBrightness: u32) -> BOOL;
-            }
 
             let mut count = 0u32;
-            if GetNumberOfPhysicalMonitorsFromHMONITOR(hmonitor, &mut count).as_bool() && count > 0
+            if dxva2::GetNumberOfPhysicalMonitorsFromHMONITOR(hmonitor, &mut count).as_bool()
+                && count > 0
             {
-                let mut monitors = vec![std::mem::zeroed::<PHYSICAL_MONITOR>(); count as usize];
-                if GetPhysicalMonitorsFromHMONITOR(hmonitor, count, monitors.as_mut_ptr()).as_bool()
+                let mut monitors =
+                    vec![std::mem::zeroed::<dxva2::PhysicalMonitor>(); count as usize];
+                if dxva2::GetPhysicalMonitorsFromHMONITOR(hmonitor, count, monitors.as_mut_ptr())
+                    .as_bool()
                 {
                     for mon in &monitors {
-                        if mon.h_physical_monitor != 0 {
-                            let _ = SetMonitorBrightness(mon.h_physical_monitor, brightness);
+                        if mon.handle == 0 {
+                            continue;
+                        }
+                        let (mut min_b, mut cur_b, mut max_b) = (0u32, 0u32, 100u32);
+                        let value = if dxva2::GetMonitorBrightness(
+                            mon.handle, &mut min_b, &mut cur_b, &mut max_b,
+                        )
+                        .as_bool()
+                            && max_b > min_b
+                        {
+                            min_b + (brightness * (max_b - min_b) + 50) / 100
+                        } else {
+                            brightness
+                        };
+                        if !dxva2::SetMonitorBrightness(mon.handle, value).as_bool() {
+                            brightness_log(
+                                "SetMonitorBrightness failed (monitor may not support DDC/CI)",
+                            );
                         }
                     }
-                    let _ = DestroyPhysicalMonitors(count, monitors.as_mut_ptr());
+                    let _ = dxva2::DestroyPhysicalMonitors(count, monitors.as_mut_ptr());
                 }
             }
             true.into()
@@ -1778,48 +1854,125 @@ fn set_physical_monitors_brightness(brightness: u32) {
     }
 }
 
+/// Reads the current brightness (0-100 %) of the first DDC/CI capable monitor.
+fn read_physical_monitors_brightness() -> Option<u32> {
+    unsafe {
+        use windows::core::BOOL;
+        use windows::Win32::Foundation::{LPARAM, RECT};
+        use windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, HDC, HMONITOR};
+
+        unsafe extern "system" fn monitor_enum_proc(
+            hmonitor: HMONITOR,
+            _: HDC,
+            _: *mut RECT,
+            lparam: LPARAM,
+        ) -> BOOL {
+            let result = &mut *(lparam.0 as *mut Option<u32>);
+            if result.is_some() {
+                return true.into();
+            }
+
+            let mut count = 0u32;
+            if dxva2::GetNumberOfPhysicalMonitorsFromHMONITOR(hmonitor, &mut count).as_bool()
+                && count > 0
+            {
+                let mut monitors =
+                    vec![std::mem::zeroed::<dxva2::PhysicalMonitor>(); count as usize];
+                if dxva2::GetPhysicalMonitorsFromHMONITOR(hmonitor, count, monitors.as_mut_ptr())
+                    .as_bool()
+                {
+                    for mon in &monitors {
+                        if mon.handle == 0 || result.is_some() {
+                            continue;
+                        }
+                        let (mut min_b, mut cur_b, mut max_b) = (0u32, 0u32, 0u32);
+                        if dxva2::GetMonitorBrightness(
+                            mon.handle, &mut min_b, &mut cur_b, &mut max_b,
+                        )
+                        .as_bool()
+                            && max_b > min_b
+                        {
+                            let pct = (cur_b.saturating_sub(min_b) * 100) / (max_b - min_b);
+                            *result = Some(pct.min(100));
+                        }
+                    }
+                    let _ = dxva2::DestroyPhysicalMonitors(count, monitors.as_mut_ptr());
+                }
+            }
+            true.into()
+        }
+
+        let mut result: Option<u32> = None;
+        let _ = EnumDisplayMonitors(
+            None,
+            None,
+            Some(monitor_enum_proc),
+            LPARAM(&mut result as *mut Option<u32> as isize),
+        );
+        result
+    }
+}
+
 pub fn setup_brightness_worker() {
     let (tx, rx) = channel::<u32>();
     let _ = BRIGHTNESS_SENDER.set(tx);
     std::thread::spawn(move || unsafe {
         // Direct WMI COM + DXVA2 implementation (zero child processes spawned).
         use windows::Win32::System::Com::{
-            CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED,
+            CoCreateInstance, CoInitializeEx, CoSetProxyBlanket, CoUninitialize, CLSCTX_ALL,
+            COINIT_MULTITHREADED, EOAC_NONE, RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE,
         };
         use windows::Win32::System::Variant::{VariantClear, VARENUM, VARIANT};
         use windows::Win32::System::Wmi::{
-            IWbemClassObject, IWbemLocator, WbemLocator, WBEM_GENERIC_FLAG_TYPE,
+            IWbemClassObject, IWbemLocator, IWbemServices, WbemLocator, WBEM_GENERIC_FLAG_TYPE,
         };
 
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
 
-        let locator: IWbemLocator = match CoCreateInstance(&WbemLocator, None, CLSCTX_ALL) {
-            Ok(l) => l,
-            Err(_) => {
-                let _ = CoUninitialize();
-                return;
-            }
-        };
-        let ns = windows::core::BSTR::from("root\\WMI");
-        let empty_bstr = windows::core::BSTR::new();
-        let services = match locator.ConnectServer(
-            &ns,
-            &empty_bstr,
-            &empty_bstr,
-            &empty_bstr,
-            0,
-            &empty_bstr,
-            None,
-        ) {
-            Ok(s) => s,
-            Err(_) => {
-                let _ = CoUninitialize();
-                return;
-            }
-        };
+        // WMI is only needed for laptop panels. If the connection fails, the
+        // DDC/CI path used by desktop monitors must keep working.
+        let wmi_services: Option<IWbemServices> = (|| {
+            let locator: IWbemLocator = CoCreateInstance(&WbemLocator, None, CLSCTX_ALL).ok()?;
+            let ns = windows::core::BSTR::from("root\\WMI");
+            let empty_bstr = windows::core::BSTR::new();
+            let services = locator
+                .ConnectServer(
+                    &ns,
+                    &empty_bstr,
+                    &empty_bstr,
+                    &empty_bstr,
+                    0,
+                    &empty_bstr,
+                    None,
+                )
+                .ok()?;
+            // Without an explicit proxy blanket, WmiSetBrightness can be rejected
+            // with "access denied" on some laptops.
+            let _ = CoSetProxyBlanket(
+                &services,
+                10u32, // RPC_C_AUTHN_WINNT
+                0u32,  // RPC_C_AUTHZ_NONE
+                windows::core::PCWSTR::null(),
+                RPC_C_AUTHN_LEVEL_CALL,
+                RPC_C_IMP_LEVEL_IMPERSONATE,
+                None,
+                EOAC_NONE,
+            );
+            Some(services)
+        })();
+        if wmi_services.is_none() {
+            brightness_log("WMI connection failed; laptop panel brightness unavailable");
+        }
 
-        while let Ok(brightness) = rx.recv() {
+        while let Ok(first) = rx.recv() {
+            // Dragging the slider queues many values; only the latest matters.
+            let mut brightness = first;
+            while let Ok(next) = rx.try_recv() {
+                brightness = next;
+            }
             let brightness = brightness.min(100);
+
+            if let Some(services) = wmi_services.as_ref() {
             // 1. Laptop internal panel via WMI WmiMonitorBrightnessMethods
             let wql = windows::core::BSTR::from("WQL");
             let q = windows::core::BSTR::from("SELECT * FROM WmiMonitorBrightnessMethods");
@@ -1873,7 +2026,7 @@ pub fn setup_brightness_worker() {
                                                 0,
                                             );
 
-                                            let _ = services.ExecMethod(
+                                            if let Err(e) = services.ExecMethod(
                                                 &obj_path,
                                                 &method_name,
                                                 WBEM_GENERIC_FLAG_TYPE(0),
@@ -1881,7 +2034,11 @@ pub fn setup_brightness_worker() {
                                                 Some(&in_params),
                                                 None,
                                                 None,
-                                            );
+                                            ) {
+                                                brightness_log(&format!(
+                                                    "WmiSetBrightness failed: {e}"
+                                                ));
+                                            }
                                         }
                                     }
                                 }
@@ -1889,6 +2046,8 @@ pub fn setup_brightness_worker() {
                         }
                     }
                 }
+            }
+
             }
 
             // 2. Desktop external monitor via Physical Monitor API (DXVA2 DDC/CI)
