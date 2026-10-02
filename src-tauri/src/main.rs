@@ -144,6 +144,7 @@ fn main() {
             load_settings,
             capture_window_thumbnail,
             get_wifi_state,
+            get_network_status,
             set_wifi_state,
             get_bluetooth_state,
             set_bluetooth_state,

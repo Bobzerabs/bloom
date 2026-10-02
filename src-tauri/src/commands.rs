@@ -1941,8 +1941,26 @@ pub fn open_notification_center() {
     }
 }
 
+/// Opens the native Windows tray overflow ("hidden icons") popup.
+///
+/// `anchor_x` / `anchor_y` are optional viewport coordinates (CSS pixels) of the
+/// top-center of the button that triggered the call. When given, the popup is
+/// moved so it appears right above that button instead of at the native position.
 #[tauri::command]
-pub fn open_system_tray() {
+pub fn open_system_tray(window: Window, anchor_x: Option<f64>, anchor_y: Option<f64>) {
+    let anchor: Option<(i32, i32)> = match (anchor_x, anchor_y) {
+        (Some(x), Some(y)) => {
+            let scale = window.scale_factor().unwrap_or(1.0);
+            window.inner_position().ok().map(|pos| {
+                (
+                    pos.x + (x * scale).round() as i32,
+                    pos.y + (y * scale).round() as i32,
+                )
+            })
+        }
+        _ => None,
+    };
+
     tauri::async_runtime::spawn_blocking(move || unsafe {
         use std::sync::atomic::Ordering;
         use windows::core::PCSTR;
@@ -2096,18 +2114,27 @@ pub fn open_system_tray() {
                     PCSTR(c"TopLevelWindowForOverflowXamlIsland".as_ptr() as *const u8);
                 let win10_overflow_class = PCSTR(c"NotifyIconOverflowWindow".as_ptr() as *const u8);
 
-                // Wait for it to appear
+                // Wait for it to appear (polled fast so it can be moved before it is noticed)
                 let mut found = false;
-                for _ in 0..50 {
+                for _ in 0..250 {
                     let h1 = FindWindowA(overflow_class, PCSTR::null()).unwrap_or_default();
                     let h2 = FindWindowA(win10_overflow_class, PCSTR::null()).unwrap_or_default();
-                    if (!h1.0.is_null() && IsWindowVisible(h1).as_bool())
-                        || (!h2.0.is_null() && IsWindowVisible(h2).as_bool())
-                    {
+                    let v1 = !h1.0.is_null() && IsWindowVisible(h1).as_bool();
+                    let v2 = !h2.0.is_null() && IsWindowVisible(h2).as_bool();
+                    if v1 || v2 {
                         found = true;
+                        if let Some((ax, ay)) = anchor {
+                            // The popup animates in and may re-place itself, so keep
+                            // pinning it above the dock button for a short moment.
+                            let target = if v1 { h1 } else { h2 };
+                            for _ in 0..12 {
+                                reposition_tray_popup(target, ax, ay);
+                                std::thread::sleep(std::time::Duration::from_millis(25));
+                            }
+                        }
                         break;
                     }
-                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    std::thread::sleep(std::time::Duration::from_millis(20));
                 }
 
                 if found {
@@ -2900,6 +2927,155 @@ pub async fn get_volume_state() -> Result<VolumeChangeEvent, String> {
 #[tauri::command]
 pub fn get_brightness() -> u32 {
     crate::state::CURRENT_BRIGHTNESS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Moves the tray overflow popup so it sits centered above the point (ax, ay),
+/// clamped to the monitor that contains that point.
+fn reposition_tray_popup(hwnd: HWND, ax: i32, ay: i32) {
+    use windows::Win32::Foundation::{POINT, RECT};
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowRect, SetWindowPos, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
+    };
+
+    unsafe {
+        let mut rect = RECT::default();
+        if GetWindowRect(hwnd, &mut rect).is_err() {
+            return;
+        }
+        let width = rect.right - rect.left;
+        let height = rect.bottom - rect.top;
+
+        let monitor = MonitorFromPoint(POINT { x: ax, y: ay }, MONITOR_DEFAULTTONEAREST);
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        let (min_x, max_x, min_y) = if GetMonitorInfoW(monitor, &mut info).as_bool() {
+            (info.rcMonitor.left, info.rcMonitor.right, info.rcMonitor.top)
+        } else {
+            (i32::MIN / 2, i32::MAX / 2, i32::MIN / 2)
+        };
+
+        let x = (ax - width / 2).min(max_x - width - 8).max(min_x + 8);
+        let y = (ay - height - 12).max(min_y + 8);
+        let _ = SetWindowPos(
+            hwnd,
+            None,
+            x,
+            y,
+            0,
+            0,
+            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        );
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct NetworkStatus {
+    /// "wifi" | "ethernet" | "other" | "none" (no internet)
+    pub kind: String,
+    pub internet: bool,
+}
+
+/// Asks the Windows Network List Manager (the same source the native tray icon
+/// uses) whether there is internet connectivity. `None` if the query failed.
+fn nlm_has_internet() -> Option<bool> {
+    use windows::Win32::Networking::NetworkListManager::{
+        INetworkListManager, NetworkListManager, NLM_CONNECTIVITY_IPV4_INTERNET,
+        NLM_CONNECTIVITY_IPV6_INTERNET,
+    };
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED,
+    };
+
+    unsafe {
+        let com_initialized = CoInitializeEx(None, COINIT_MULTITHREADED).is_ok();
+        let result = (|| {
+            let manager: INetworkListManager =
+                CoCreateInstance(&NetworkListManager, None, CLSCTX_ALL).ok()?;
+            let connectivity = manager.GetConnectivity().ok()?;
+            let internet_bits =
+                NLM_CONNECTIVITY_IPV4_INTERNET.0 | NLM_CONNECTIVITY_IPV6_INTERNET.0;
+            Some((connectivity.0 & internet_bits) != 0)
+        })();
+        if com_initialized {
+            CoUninitialize();
+        }
+        result
+    }
+}
+
+fn network_status_sync() -> NetworkStatus {
+    use windows::Win32::NetworkManagement::IpHelper::{FreeMibTable, GetIfTable2, MIB_IF_TABLE2};
+    use windows::Win32::NetworkManagement::Ndis::{IfOperStatusUp, MediaConnectStateConnected};
+
+    const IF_TYPE_ETHERNET: u32 = 6;
+    const IF_TYPE_WIFI: u32 = 71;
+
+    // "hw" = physical adapters only; "any" = every adapter (fallback if the
+    // hardware flag is not reported on this machine).
+    let (mut eth_hw, mut wifi_hw, mut eth_any, mut wifi_any) = (false, false, false, false);
+    unsafe {
+        let mut table_ptr: *mut MIB_IF_TABLE2 = std::ptr::null_mut();
+        if GetIfTable2(&mut table_ptr).is_ok() && !table_ptr.is_null() {
+            let table = &*table_ptr;
+            let rows = table.Table.as_ptr();
+            for i in 0..table.NumEntries as usize {
+                let row = &*rows.add(i);
+                if row.OperStatus != IfOperStatusUp
+                    || row.MediaConnectState != MediaConnectStateConnected
+                {
+                    continue;
+                }
+                let hardware = row.InterfaceAndOperStatusFlags._bitfield & 0x01 != 0;
+                match row.Type {
+                    IF_TYPE_ETHERNET => {
+                        eth_any = true;
+                        eth_hw |= hardware;
+                    }
+                    IF_TYPE_WIFI => {
+                        wifi_any = true;
+                        wifi_hw |= hardware;
+                    }
+                    _ => {}
+                }
+            }
+            FreeMibTable(table_ptr as *const _);
+        }
+    }
+
+    let (has_eth, has_wifi) = if eth_hw || wifi_hw {
+        (eth_hw, wifi_hw)
+    } else {
+        (eth_any, wifi_any)
+    };
+    let adapter_connected = has_eth || has_wifi;
+
+    let internet = nlm_has_internet().unwrap_or(adapter_connected);
+    let kind = if !internet {
+        "none"
+    } else if has_eth {
+        "ethernet"
+    } else if has_wifi {
+        "wifi"
+    } else {
+        "other"
+    };
+
+    NetworkStatus {
+        kind: kind.to_string(),
+        internet,
+    }
+}
+
+#[tauri::command]
+pub async fn get_network_status() -> Result<NetworkStatus, String> {
+    tauri::async_runtime::spawn_blocking(network_status_sync)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

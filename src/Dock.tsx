@@ -1425,7 +1425,55 @@ const Dock = memo(function Dock() {
 // Quick-access buttons that stand in for the native Windows notification area
 // (hidden-icons chevron, network, sound, notifications). Each one asks the
 // backend to open the matching native Windows flyout.
-const TRAY_BUTTONS: { id: string; title: string; command: string; icon: ReactElement }[] = [
+type NetworkKind = "wifi" | "ethernet" | "other" | "none";
+
+interface NetworkStatus {
+	kind: NetworkKind;
+	internet: boolean;
+}
+
+const NETWORK_TITLES: Record<NetworkKind, string> = {
+	wifi: "Network (Wi-Fi)",
+	ethernet: "Network (Ethernet)",
+	other: "Network",
+	none: "No internet"
+};
+
+// Mirrors the native Windows icons: Wi-Fi for wireless, a wired "monitor with
+// cable" icon for Ethernet, and a globe with an X when there is no internet.
+function NetworkIcon({ kind }: { kind: NetworkKind }) {
+	if (kind === "none") {
+		return (
+			<svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+				<circle cx="11" cy="11" r="8" />
+				<path d="M3 11h16" />
+				<path d="M11 3a12 12 0 0 1 0 16a12 12 0 0 1 0-16" />
+				<path d="M15.5 15.5l6 6" stroke="#ff5c5c" strokeWidth="2.6" />
+				<path d="M21.5 15.5l-6 6" stroke="#ff5c5c" strokeWidth="2.6" />
+			</svg>
+		);
+	}
+	if (kind === "ethernet" || kind === "other") {
+		return (
+			<svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+				<rect x="3" y="4" width="18" height="12" rx="2" />
+				<rect x="14" y="7" width="4" height="3" rx="0.6" />
+				<path d="M12 16v4" />
+				<path d="M8 20h8" />
+			</svg>
+		);
+	}
+	return (
+		<svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+			<path d="M5 12.55a11 11 0 0 1 14.08 0" />
+			<path d="M1.42 9a16 16 0 0 1 21.16 0" />
+			<path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+			<line x1="12" y1="20" x2="12.01" y2="20" />
+		</svg>
+	);
+}
+
+const TRAY_BUTTONS: { id: string; title: string; command: string; icon?: ReactElement }[] = [
 	{
 		id: "tray",
 		title: "Hidden icons",
@@ -1439,15 +1487,7 @@ const TRAY_BUTTONS: { id: string; title: string; command: string; icon: ReactEle
 	{
 		id: "network",
 		title: "Network",
-		command: "open_wifi_settings",
-		icon: (
-			<svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-				<path d="M5 12.55a11 11 0 0 1 14.08 0" />
-				<path d="M1.42 9a16 16 0 0 1 21.16 0" />
-				<path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
-				<line x1="12" y1="20" x2="12.01" y2="20" />
-			</svg>
-		)
+		command: "open_wifi_settings"
 	},
 	{
 		id: "sound",
@@ -1475,6 +1515,27 @@ const TRAY_BUTTONS: { id: string; title: string; command: string; icon: ReactEle
 ];
 
 const DockTrayButtons = memo(function DockTrayButtons() {
+	const [networkKind, setNetworkKind] = useState<NetworkKind>("wifi");
+
+	// Keep the network icon in sync with the real connection state.
+	useEffect(() => {
+		let cancelled = false;
+		const refresh = async () => {
+			try {
+				const status = await invoke<NetworkStatus>("get_network_status");
+				if (!cancelled) setNetworkKind(status.kind);
+			} catch {
+				// keep the last known icon
+			}
+		};
+		refresh();
+		const interval = setInterval(refresh, 3000);
+		return () => {
+			cancelled = true;
+			clearInterval(interval);
+		};
+	}, []);
+
 	return (
 		<>
 			<div className="dock-tray-divider" />
@@ -1485,14 +1546,26 @@ const DockTrayButtons = memo(function DockTrayButtons() {
 						className="dock-icon-wrapper dock-tray-button"
 						onClick={(e) => {
 							e.stopPropagation();
-							invoke(btn.command).catch((err) =>
+							// The hidden-icons popup is placed right above this button.
+							const args =
+								btn.id === "tray"
+									? (() => {
+											const rect = e.currentTarget.getBoundingClientRect();
+											return { anchorX: rect.left + rect.width / 2, anchorY: rect.top };
+										})()
+									: undefined;
+							invoke(btn.command, args).catch((err) =>
 								console.error(`Failed to run ${btn.command}:`, err)
 							);
 						}}
 						onContextMenu={(e) => e.stopPropagation()}
 					>
-						<div className="dock-icon">{btn.icon}</div>
-						<div className="tooltip">{btn.title}</div>
+						<div className="dock-icon">
+							{btn.id === "network" ? <NetworkIcon kind={networkKind} /> : btn.icon}
+						</div>
+						<div className="tooltip">
+							{btn.id === "network" ? NETWORK_TITLES[networkKind] : btn.title}
+						</div>
 					</div>
 				))}
 			</div>
