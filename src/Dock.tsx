@@ -111,9 +111,12 @@ const Dock = memo(function Dock() {
 		() => localStorage.getItem("bloom-dock-magnify") !== "false"
 	);
 	const [dockMagnifySize, setDockMagnifySize] = useState(() => {
-		const v = parseFloat(localStorage.getItem("bloom-dock-magnify-size") || "1.6");
-		return isNaN(v) ? 1.6 : v;
+		const v = parseFloat(localStorage.getItem("bloom-dock-magnify-size") || "1.3");
+		return isNaN(v) ? 1.3 : Math.min(Math.max(v, 1.1), 1.6);
 	});
+	const [dockOpenClose, setDockOpenClose] = useState(
+		() => localStorage.getItem("bloom-dock-openclose-anim") === "true"
+	);
 	const [dockBounce, setDockBounce] = useState(
 		() => localStorage.getItem("bloom-dock-bounce") !== "false"
 	);
@@ -301,7 +304,7 @@ const Dock = memo(function Dock() {
 			if (pointerX !== null && (isDraggingRef.current || now - lastMove > 400)) pointerX = null;
 
 			const k = scaleRef.current || 1;
-			const radius = 130 * k;
+			const radius = 95 * k;
 			let settled = true;
 			const extras: number[] = [];
 			let total = 0;
@@ -428,9 +431,10 @@ const Dock = memo(function Dock() {
 			setDockTrayEnabled(trayEnabled !== "false");
 
 			setDockMagnify(getVal("bloom-dock-magnify", "true") !== "false");
-			const magSize = parseFloat(getVal("bloom-dock-magnify-size", "1.6") || "1.6");
-			if (!isNaN(magSize)) setDockMagnifySize(magSize);
+			const magSize = parseFloat(getVal("bloom-dock-magnify-size", "1.3") || "1.3");
+			if (!isNaN(magSize)) setDockMagnifySize(Math.min(Math.max(magSize, 1.1), 1.6));
 			setDockBounce(getVal("bloom-dock-bounce", "true") !== "false");
+			setDockOpenClose(getVal("bloom-dock-openclose-anim", "false") === "true");
 
 			const startIconVal = getVal("bloom-start-icon", "default") || "default";
 			setStartIcon(startIconVal);
@@ -483,6 +487,7 @@ const Dock = memo(function Dock() {
 		"bloom-dock-magnify": setDockMagnify,
 		"bloom-dock-magnify-size": setDockMagnifySize,
 		"bloom-dock-bounce": setDockBounce,
+		"bloom-dock-openclose-anim": setDockOpenClose,
 		"bloom-start-icon": setStartIcon,
 		"bloom-scale": setScale
 	});
@@ -589,7 +594,10 @@ const Dock = memo(function Dock() {
 
 	const handleRemoveCustomIcon = async (app: AppInfo) => {
 		try {
-			await invoke("remove_custom_icon", { path: app.path, name: app.name || null });
+			await invoke("remove_custom_icon", {
+				path: app.path,
+				name: app.name || null
+			});
 			const isHost = isBrowserHost(app.path);
 			const ck =
 				isHost && app.name
@@ -654,7 +662,10 @@ const Dock = memo(function Dock() {
 	const handleNewInstance = async (app: AppInfo) => {
 		if (!app || app.path === "start") return;
 		try {
-			await invoke("launch_new_instance", { appPath: app.path, appName: app.name });
+			await invoke("launch_new_instance", {
+				appPath: app.path,
+				appName: app.name
+			});
 		} catch (e) {
 			console.error(`Failed to launch a new instance of ${app.name}:`, e);
 		}
@@ -805,7 +816,12 @@ const Dock = memo(function Dock() {
 			},
 			...pinnedApps.map((p) => {
 				const running = findRunningApp(p);
-				return { ...p, is_running: !!running, hwnd: running?.hwnd, all_hwnds: running?.all_hwnds };
+				return {
+					...p,
+					is_running: !!running,
+					hwnd: running?.hwnd,
+					all_hwnds: running?.all_hwnds
+				};
 			})
 		];
 
@@ -915,8 +931,14 @@ const Dock = memo(function Dock() {
 
 						const captured = results
 							.filter(
-								(r): r is { hwnd: number; title: string; image: string; lastFocused: number } =>
-									r !== null
+								(
+									r
+								): r is {
+									hwnd: number;
+									title: string;
+									image: string;
+									lastFocused: number;
+								} => r !== null
 							)
 							.sort((a, b) => b.lastFocused - a.lastFocused)
 							.map(({ hwnd, title, image }) => ({ hwnd, title, image }));
@@ -1000,10 +1022,26 @@ const Dock = memo(function Dock() {
 						width: { type: "spring", stiffness: 250, damping: 22, mass: 0.8 },
 						height: { type: "spring", stiffness: 250, damping: 22, mass: 0.8 },
 						layout: isDragging ? { duration: 0 } : { type: "spring", stiffness: 300, damping: 25 },
-						borderTopLeftRadius: { type: "spring", stiffness: 500, damping: 30 },
-						borderTopRightRadius: { type: "spring", stiffness: 500, damping: 30 },
-						borderBottomLeftRadius: { type: "spring", stiffness: 500, damping: 30 },
-						borderBottomRightRadius: { type: "spring", stiffness: 500, damping: 30 },
+						borderTopLeftRadius: {
+							type: "spring",
+							stiffness: 500,
+							damping: 30
+						},
+						borderTopRightRadius: {
+							type: "spring",
+							stiffness: 500,
+							damping: 30
+						},
+						borderBottomLeftRadius: {
+							type: "spring",
+							stiffness: 500,
+							damping: 30
+						},
+						borderBottomRightRadius: {
+							type: "spring",
+							stiffness: 500,
+							damping: 30
+						},
 						opacity: { type: "tween", duration: 0.2 },
 						scale: { duration: 0 }
 					}}
@@ -1028,7 +1066,12 @@ const Dock = memo(function Dock() {
 										animate={{ opacity: 1, scale: 1 }}
 										transition={{
 											opacity: { duration: 0.15, delay: 0.15 },
-											scale: { type: "spring", stiffness: 400, damping: 25, delay: 0.15 }
+											scale: {
+												type: "spring",
+												stiffness: 400,
+												damping: 25,
+												delay: 0.15
+											}
 										}}
 										className="dock-icon-wrapper"
 										onContextMenu={(e) => handleContextMenu(e, startItem)}
@@ -1141,7 +1184,11 @@ const Dock = memo(function Dock() {
 																		<div
 																			key={prev.hwnd}
 																			className="preview-item"
-																			onClick={() => invoke("focus_window", { hwnd: prev.hwnd })}
+																			onClick={() =>
+																				invoke("focus_window", {
+																					hwnd: prev.hwnd
+																				})
+																			}
 																		>
 																			<img src={prev.image} alt={`Preview ${idx}`} />
 																			<div className="preview-label">{prev.title || app.name}</div>
@@ -1233,145 +1280,239 @@ const Dock = memo(function Dock() {
 									))}
 								</Reorder.Group>
 
-								{unpinnedItems.map((app) => (
-									<motion.div
-										key={app.path}
-										layout
-										initial={{ opacity: 0, scale: 0 }}
-										animate={{
-											opacity: 1,
-											scale: 1,
-											transition: {
-												opacity: { duration: 0.15, delay: 0.15 },
-												scale: { type: "spring", stiffness: 400, damping: 25, delay: 0.15 }
-											}
-										}}
-										exit={{ opacity: 0, scale: 0, transition: { duration: 0.12 } }}
-										className="dock-icon-wrapper"
-										onContextMenu={(e) => handleContextMenu(e, app)}
-										onMouseEnter={() => setHoveredApp(itemKey(app))}
-										onMouseLeave={() => {
-											if (!isPreviewHoveredRef.current) {
-												setHoveredApp(null);
-												setPressedApp(null);
-											}
-										}}
-										onMouseDown={(e) => {
-											if (e.button === 1) e.preventDefault();
-										}}
-										onAuxClick={(e) => handleMiddleClick(e, app)}
-										onClick={(e) => {
-											e.stopPropagation();
-											handleAppClick(app);
-										}}
-									>
-										<AnimatePresence>
-											{dockPreviewEnabled &&
-												previewData &&
-												previewData.id === itemKey(app) &&
-												hoveredApp === itemKey(app) && (
-													<motion.div
-														className={`preview-tooltip ${previewData.previews.length > 1 ? "multi" : ""}`}
-														initial={{ opacity: 0, y: 10, scale: 0.95 }}
-														animate={{ opacity: 1, y: 0, scale: 1 }}
-														exit={{ opacity: 0, scale: 0.95 }}
-														transition={{ duration: 0.15 }}
-														onMouseEnter={() => {
-															isPreviewHoveredRef.current = true;
-														}}
-														onMouseLeave={() => {
-															isPreviewHoveredRef.current = false;
-															setHoveredApp(null);
-															setPressedApp(null);
-														}}
-													>
-														<div className="preview-items">
-															{previewData.previews.map((prev, idx) => (
-																<div
-																	key={prev.hwnd}
-																	className="preview-item"
-																	onClick={() => invoke("focus_window", { hwnd: prev.hwnd })}
-																>
-																	<img src={prev.image} alt={`Preview ${idx}`} />
-																	<div className="preview-label">{prev.title || app.name}</div>
-																	<button
-																		className="preview-close-btn"
-																		onClick={(e) => handleClosePreview(e, prev.hwnd)}
-																		title={t("Close Window")}
-																	>
-																		<svg
-																			width="10"
-																			height="10"
-																			viewBox="0 0 24 24"
-																			fill="none"
-																			stroke="currentColor"
-																			strokeWidth="3"
-																			strokeLinecap="round"
-																		>
-																			<line x1="18" y1="6" x2="6" y2="18"></line>
-																			<line x1="6" y1="6" x2="18" y2="18"></line>
-																		</svg>
-																	</button>
-																</div>
-															))}
-														</div>
-													</motion.div>
-												)}
-										</AnimatePresence>
-										{(!dockPreviewEnabled ||
-											(dockPreviewEnabled && hoveredApp === itemKey(app) && !previewData)) && (
-											<div className="tooltip">{app.name}</div>
-										)}
+								<AnimatePresence initial={false}>
+									{unpinnedItems.map((app) => (
 										<motion.div
-											className={`dock-icon${bouncingApp === itemKey(app) ? " dock-bounce" : ""}`}
-											variants={iconVariants}
-											animate={
-												pressedApp === itemKey(app)
-													? "tap"
-													: hoveredApp === itemKey(app) && !isDragging
-														? "hover"
-														: "idle"
+											key={app.path}
+											layout
+											style={dockOpenClose ? { transformOrigin: "50% 100%" } : undefined}
+											initial={
+												dockOpenClose
+													? {
+															opacity: 0,
+															scale: 0.2,
+															width: 0,
+															marginLeft: -6,
+															marginRight: -6
+														}
+													: { opacity: 0, scale: 0 }
 											}
-											onPointerDown={() => setPressedApp(itemKey(app))}
-											onPointerUp={() => setPressedApp(null)}
-											onPointerCancel={() => setPressedApp(null)}
+											animate={
+												dockOpenClose
+													? {
+															opacity: 1,
+															scale: 1,
+															width: "auto",
+															marginLeft: 0,
+															marginRight: 0,
+															transition: {
+																width: {
+																	type: "spring",
+																	stiffness: 260,
+																	damping: 26
+																},
+																marginLeft: {
+																	type: "spring",
+																	stiffness: 260,
+																	damping: 26
+																},
+																marginRight: {
+																	type: "spring",
+																	stiffness: 260,
+																	damping: 26
+																},
+																scale: {
+																	type: "spring",
+																	stiffness: 300,
+																	damping: 17,
+																	delay: 0.12
+																},
+																opacity: { duration: 0.2 }
+															}
+														}
+													: {
+															opacity: 1,
+															scale: 1,
+															transition: {
+																opacity: { duration: 0.15, delay: 0.15 },
+																scale: {
+																	type: "spring",
+																	stiffness: 400,
+																	damping: 25,
+																	delay: 0.15
+																}
+															}
+														}
+											}
+											exit={
+												dockOpenClose
+													? {
+															opacity: 0,
+															scale: 0.2,
+															width: 0,
+															marginLeft: -6,
+															marginRight: -6,
+															y: -14,
+															transition: {
+																opacity: { duration: 0.22 },
+																scale: {
+																	duration: 0.28,
+																	ease: [0.4, 0, 0.2, 1]
+																},
+																y: { duration: 0.28, ease: [0.4, 0, 0.2, 1] },
+																width: {
+																	duration: 0.3,
+																	delay: 0.1,
+																	ease: [0.4, 0, 0.2, 1]
+																},
+																marginLeft: {
+																	duration: 0.3,
+																	delay: 0.1,
+																	ease: [0.4, 0, 0.2, 1]
+																},
+																marginRight: {
+																	duration: 0.3,
+																	delay: 0.1,
+																	ease: [0.4, 0, 0.2, 1]
+																}
+															}
+														}
+													: {
+															opacity: 0,
+															scale: 0,
+															transition: { duration: 0.12 }
+														}
+											}
+											className="dock-icon-wrapper"
+											onContextMenu={(e) => handleContextMenu(e, app)}
+											onMouseEnter={() => setHoveredApp(itemKey(app))}
+											onMouseLeave={() => {
+												if (!isPreviewHoveredRef.current) {
+													setHoveredApp(null);
+													setPressedApp(null);
+												}
+											}}
+											onMouseDown={(e) => {
+												if (e.button === 1) e.preventDefault();
+											}}
+											onAuxClick={(e) => handleMiddleClick(e, app)}
+											onClick={(e) => {
+												e.stopPropagation();
+												handleAppClick(app);
+											}}
 										>
-											{(() => {
-												const isHost = isBrowserHost(app.path);
-												const cacheKey = isHost
-													? `${app.path}:${app.name.toLowerCase()}`
-													: app.hwnd
-														? `${app.path}-${app.hwnd}`
-														: app.path;
-												// Running host items must not use the shared path fallback: the
-												// browser and its PWAs share one path, so it would leak one item's
-												// icon onto the others.
-												const allowPathFallback = !isHost || !app.is_running;
-												const icon =
-													customIcons[cacheKey] ||
-													(allowPathFallback && customIcons[app.path]) ||
-													iconsRef.current[cacheKey] ||
-													(allowPathFallback && iconsRef.current[app.path]) ||
-													app.icon;
-												const isBloomOrSettings =
-													app.name.toLowerCase() === "settings" ||
-													app.name.toLowerCase() === "bloom" ||
-													app.path.toLowerCase().includes("bloom.exe");
-												return icon ? (
-													<img
-														src={icon}
-														alt={app.name}
-														className={isBloomOrSettings ? "bloom-icon-img" : ""}
-														draggable={false}
-													/>
-												) : (
-													<div className="fallback-icon">{app.name[0]}</div>
-												);
-											})()}
+											<AnimatePresence>
+												{dockPreviewEnabled &&
+													previewData &&
+													previewData.id === itemKey(app) &&
+													hoveredApp === itemKey(app) && (
+														<motion.div
+															className={`preview-tooltip ${previewData.previews.length > 1 ? "multi" : ""}`}
+															initial={{ opacity: 0, y: 10, scale: 0.95 }}
+															animate={{ opacity: 1, y: 0, scale: 1 }}
+															exit={{ opacity: 0, scale: 0.95 }}
+															transition={{ duration: 0.15 }}
+															onMouseEnter={() => {
+																isPreviewHoveredRef.current = true;
+															}}
+															onMouseLeave={() => {
+																isPreviewHoveredRef.current = false;
+																setHoveredApp(null);
+																setPressedApp(null);
+															}}
+														>
+															<div className="preview-items">
+																{previewData.previews.map((prev, idx) => (
+																	<div
+																		key={prev.hwnd}
+																		className="preview-item"
+																		onClick={() =>
+																			invoke("focus_window", {
+																				hwnd: prev.hwnd
+																			})
+																		}
+																	>
+																		<img src={prev.image} alt={`Preview ${idx}`} />
+																		<div className="preview-label">{prev.title || app.name}</div>
+																		<button
+																			className="preview-close-btn"
+																			onClick={(e) => handleClosePreview(e, prev.hwnd)}
+																			title={t("Close Window")}
+																		>
+																			<svg
+																				width="10"
+																				height="10"
+																				viewBox="0 0 24 24"
+																				fill="none"
+																				stroke="currentColor"
+																				strokeWidth="3"
+																				strokeLinecap="round"
+																			>
+																				<line x1="18" y1="6" x2="6" y2="18"></line>
+																				<line x1="6" y1="6" x2="18" y2="18"></line>
+																			</svg>
+																		</button>
+																	</div>
+																))}
+															</div>
+														</motion.div>
+													)}
+											</AnimatePresence>
+											{(!dockPreviewEnabled ||
+												(dockPreviewEnabled && hoveredApp === itemKey(app) && !previewData)) && (
+												<div className="tooltip">{app.name}</div>
+											)}
+											<motion.div
+												className={`dock-icon${bouncingApp === itemKey(app) ? " dock-bounce" : ""}`}
+												variants={iconVariants}
+												animate={
+													pressedApp === itemKey(app)
+														? "tap"
+														: hoveredApp === itemKey(app) && !isDragging
+															? "hover"
+															: "idle"
+												}
+												onPointerDown={() => setPressedApp(itemKey(app))}
+												onPointerUp={() => setPressedApp(null)}
+												onPointerCancel={() => setPressedApp(null)}
+											>
+												{(() => {
+													const isHost = isBrowserHost(app.path);
+													const cacheKey = isHost
+														? `${app.path}:${app.name.toLowerCase()}`
+														: app.hwnd
+															? `${app.path}-${app.hwnd}`
+															: app.path;
+													// Running host items must not use the shared path fallback: the
+													// browser and its PWAs share one path, so it would leak one item's
+													// icon onto the others.
+													const allowPathFallback = !isHost || !app.is_running;
+													const icon =
+														customIcons[cacheKey] ||
+														(allowPathFallback && customIcons[app.path]) ||
+														iconsRef.current[cacheKey] ||
+														(allowPathFallback && iconsRef.current[app.path]) ||
+														app.icon;
+													const isBloomOrSettings =
+														app.name.toLowerCase() === "settings" ||
+														app.name.toLowerCase() === "bloom" ||
+														app.path.toLowerCase().includes("bloom.exe");
+													return icon ? (
+														<img
+															src={icon}
+															alt={app.name}
+															className={isBloomOrSettings ? "bloom-icon-img" : ""}
+															draggable={false}
+														/>
+													) : (
+														<div className="fallback-icon">{app.name[0]}</div>
+													);
+												})()}
+											</motion.div>
+											{app.is_running && <div className="active-indicator" />}
 										</motion.div>
-										{app.is_running && <div className="active-indicator" />}
-									</motion.div>
-								))}
+									))}
+								</AnimatePresence>
 								{dockTrayEnabled && <DockTrayButtons />}
 							</motion.div>
 						)}
@@ -1510,7 +1651,9 @@ const Dock = memo(function Dock() {
 										className="menu-item quit"
 										onClick={async () => {
 											if (contextMenu.app?.hwnd) {
-												await invoke("close_window", { hwnd: contextMenu.app.hwnd });
+												await invoke("close_window", {
+													hwnd: contextMenu.app.hwnd
+												});
 												closeMenu();
 											}
 										}}
@@ -1652,7 +1795,13 @@ function networkTitle(kind: NetworkKind, signal: number): string {
 function NetworkIcon({ kind, signal }: { kind: NetworkKind; signal: number }) {
 	if (kind === "none") {
 		return (
-			<svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+			<svg
+				viewBox="0 0 24 24"
+				fill="none"
+				strokeWidth="2"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			>
 				<circle cx="11" cy="11" r="8" />
 				<path d="M3 11h16" />
 				<path d="M11 3a12 12 0 0 1 0 16a12 12 0 0 1 0-16" />
@@ -1663,7 +1812,13 @@ function NetworkIcon({ kind, signal }: { kind: NetworkKind; signal: number }) {
 	}
 	if (kind === "ethernet" || kind === "other") {
 		return (
-			<svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+			<svg
+				viewBox="0 0 24 24"
+				fill="none"
+				strokeWidth="2"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			>
 				<rect x="3" y="4" width="18" height="12" rx="2" />
 				<rect x="14" y="7" width="4" height="3" rx="0.6" />
 				<path d="M12 16v4" />
@@ -1674,7 +1829,13 @@ function NetworkIcon({ kind, signal }: { kind: NetworkKind; signal: number }) {
 	// Wi-Fi: 0 = dot only, 3 = full strength. Unknown signal (0) shows full bars.
 	const level = signal <= 0 ? 3 : signal >= 70 ? 3 : signal >= 45 ? 2 : signal >= 20 ? 1 : 0;
 	return (
-		<svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+		<svg
+			viewBox="0 0 24 24"
+			fill="none"
+			strokeWidth="2"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+		>
 			<path d="M1.42 9a16 16 0 0 1 21.16 0" opacity={level >= 3 ? 1 : 0.3} />
 			<path d="M5 12.55a11 11 0 0 1 14.08 0" opacity={level >= 2 ? 1 : 0.3} />
 			<path d="M8.53 16.11a6 6 0 0 1 6.95 0" opacity={level >= 1 ? 1 : 0.3} />
@@ -1683,13 +1844,24 @@ function NetworkIcon({ kind, signal }: { kind: NetworkKind; signal: number }) {
 	);
 }
 
-const TRAY_BUTTONS: { id: string; title: string; command: string; icon?: ReactElement }[] = [
+const TRAY_BUTTONS: {
+	id: string;
+	title: string;
+	command: string;
+	icon?: ReactElement;
+}[] = [
 	{
 		id: "tray",
 		title: "Hidden icons",
 		command: "open_system_tray",
 		icon: (
-			<svg viewBox="0 0 24 24" fill="none" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+			<svg
+				viewBox="0 0 24 24"
+				fill="none"
+				strokeWidth="2.4"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			>
 				<polyline points="6 15 12 9 18 15" />
 			</svg>
 		)
@@ -1704,7 +1876,13 @@ const TRAY_BUTTONS: { id: string; title: string; command: string; icon?: ReactEl
 		title: "Sound",
 		command: "open_sound_settings",
 		icon: (
-			<svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+			<svg
+				viewBox="0 0 24 24"
+				fill="none"
+				strokeWidth="2"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			>
 				<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
 				<path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
 				<path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
@@ -1716,7 +1894,13 @@ const TRAY_BUTTONS: { id: string; title: string; command: string; icon?: ReactEl
 		title: "Notifications",
 		command: "open_notification_center",
 		icon: (
-			<svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+			<svg
+				viewBox="0 0 24 24"
+				fill="none"
+				strokeWidth="2"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			>
 				<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
 				<path d="M13.73 21a2 2 0 0 1-3.46 0" />
 			</svg>
@@ -1771,7 +1955,10 @@ const DockTrayButtons = memo(function DockTrayButtons() {
 								btn.id === "tray"
 									? (() => {
 											const rect = e.currentTarget.getBoundingClientRect();
-											return { anchorX: rect.left + rect.width / 2, anchorY: rect.top };
+											return {
+												anchorX: rect.left + rect.width / 2,
+												anchorY: rect.top
+											};
 										})()
 									: undefined;
 							// Wired connections open the Ethernet page instead of the Wi-Fi list.
@@ -1779,9 +1966,7 @@ const DockTrayButtons = memo(function DockTrayButtons() {
 								btn.id === "network" && network.kind === "ethernet"
 									? "open_ethernet_settings"
 									: btn.command;
-							invoke(command, args).catch((err) =>
-								console.error(`Failed to run ${command}:`, err)
-							);
+							invoke(command, args).catch((err) => console.error(`Failed to run ${command}:`, err));
 						}}
 					>
 						<div className="dock-icon">
@@ -1907,7 +2092,9 @@ function AddAppPopup({
 				if (!listIcons[app.path]) {
 					await new Promise((r) => setTimeout(r, 20));
 					try {
-						const icon = await invoke<string | null>("get_app_icon", { path: app.path });
+						const icon = await invoke<string | null>("get_app_icon", {
+							path: app.path
+						});
 						if (icon && active) {
 							batch[app.path] = icon;
 							count++;

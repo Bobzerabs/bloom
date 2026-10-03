@@ -197,6 +197,8 @@ const pt: Record<string, string> = {
 	"Magnification": "Ampliação",
 	"Magnification Size": "Tamanho da ampliação",
 	"Media Layout": "Layout de mídia",
+	"macOS Open/Close Animation": "Animação de abrir/fechar do macOS",
+	"Icons of apps grow in when opened and shrink away when closed": "Os ícones dos apps crescem ao abrir e encolhem ao fechar",
 	"Mostly Clear": "Predomínio de sol",
 	"Music Mode": "Modo música",
 	"Net": "Rede",

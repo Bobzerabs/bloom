@@ -72,9 +72,12 @@ export function useSettings() {
 		() => localStorage.getItem("bloom-dock-magnify") !== "false"
 	);
 	const [dockMagnifySize, setDockMagnifySize] = useState(() => {
-		const v = parseFloat(localStorage.getItem("bloom-dock-magnify-size") || "1.6");
-		return isNaN(v) ? 1.6 : v;
+		const v = parseFloat(localStorage.getItem("bloom-dock-magnify-size") || "1.3");
+		return isNaN(v) ? 1.3 : Math.min(Math.max(v, 1.1), 1.6);
 	});
+	const [dockOpenCloseAnim, setDockOpenCloseAnim] = useState(
+		() => localStorage.getItem("bloom-dock-openclose-anim") === "true"
+	);
 	const [dockBounce, setDockBounce] = useState(
 		() => localStorage.getItem("bloom-dock-bounce") !== "false"
 	);
@@ -172,6 +175,7 @@ export function useSettings() {
 			apply(getVal("bloom-dock-magnify"), setDockMagnify, readBool);
 			apply(getVal("bloom-dock-magnify-size"), setDockMagnifySize, parseFloat);
 			apply(getVal("bloom-dock-bounce"), setDockBounce, readBool);
+			apply(getVal("bloom-dock-openclose-anim"), setDockOpenCloseAnim, readBool);
 			apply(getVal("bloom-dock-all-monitors"), setDockAllMonitors, readBool);
 			apply(getVal("bloom-start-icon"), setStartIcon, (v) => v);
 			apply(getVal("bloom-dock-adaptive"), setDockAdaptive, readBool);
@@ -232,6 +236,7 @@ export function useSettings() {
 		"bloom-dock-magnify": setDockMagnify,
 		"bloom-dock-magnify-size": setDockMagnifySize,
 		"bloom-dock-bounce": setDockBounce,
+		"bloom-dock-openclose-anim": setDockOpenCloseAnim,
 		"bloom-dock-all-monitors": setDockAllMonitors,
 		"bloom-start-icon": setStartIcon,
 		"bloom-dock-preview-enabled": setDockPreviewEnabled,
@@ -502,6 +507,12 @@ export function useSettings() {
 	const handleMagnifySizeChange = (val: number) => {
 		setDockMagnifySize(val);
 		saveSetting("bloom-dock-magnify-size", val.toString());
+	};
+
+	const toggleDockOpenCloseAnim = () => {
+		const next = !dockOpenCloseAnim;
+		setDockOpenCloseAnim(next);
+		saveSetting("bloom-dock-openclose-anim", String(next));
 	};
 
 	const toggleDockBounce = () => {
@@ -797,6 +808,8 @@ export function useSettings() {
 		handleMagnifySizeChange,
 		dockBounce,
 		toggleDockBounce,
+		dockOpenCloseAnim,
+		toggleDockOpenCloseAnim,
 		dockAllMonitors,
 		toggleDockAllMonitors,
 		startIcon,

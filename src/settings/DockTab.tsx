@@ -54,6 +54,8 @@ interface DockTabProps {
 	handleMagnifySizeChange: (val: number) => void;
 	dockBounce: boolean;
 	toggleDockBounce: () => void;
+	dockOpenCloseAnim: boolean;
+	toggleDockOpenCloseAnim: () => void;
 	dockAllMonitors: boolean;
 	toggleDockAllMonitors: () => void;
 	dockAdaptive: boolean;
@@ -81,6 +83,8 @@ export function DockTab({
 	handleMagnifySizeChange,
 	dockBounce,
 	toggleDockBounce,
+	dockOpenCloseAnim,
+	toggleDockOpenCloseAnim,
 	dockAllMonitors,
 	toggleDockAllMonitors,
 	dockAdaptive,
@@ -207,9 +211,9 @@ export function DockTab({
 							>
 								<input
 									type="range"
-									min="1.2"
-									max="2.0"
-									step="0.1"
+									min="1.1"
+									max="1.6"
+									step="0.05"
 									value={dockMagnifySize}
 									onChange={(e) => handleMagnifySizeChange(parseFloat(e.target.value))}
 									className="settings-slider"
@@ -224,6 +228,21 @@ export function DockTab({
 						>
 							<label className="toggle-switch">
 								<input type="checkbox" checked={dockBounce} onChange={toggleDockBounce} />
+								<span className="slider"></span>
+							</label>
+						</SettingRow>
+
+						<SettingRow
+							icon={Sparkles}
+							label="macOS Open/Close Animation"
+							desc="Icons of apps grow in when opened and shrink away when closed"
+						>
+							<label className="toggle-switch">
+								<input
+									type="checkbox"
+									checked={dockOpenCloseAnim}
+									onChange={toggleDockOpenCloseAnim}
+								/>
 								<span className="slider"></span>
 							</label>
 						</SettingRow>

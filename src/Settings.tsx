@@ -209,6 +209,8 @@ function SettingsApp() {
 							handleMagnifySizeChange={settings.handleMagnifySizeChange}
 							dockBounce={settings.dockBounce}
 							toggleDockBounce={settings.toggleDockBounce}
+							dockOpenCloseAnim={settings.dockOpenCloseAnim}
+							toggleDockOpenCloseAnim={settings.toggleDockOpenCloseAnim}
 							dockAllMonitors={settings.dockAllMonitors}
 							toggleDockAllMonitors={settings.toggleDockAllMonitors}
 							dockAdaptive={settings.dockAdaptive}

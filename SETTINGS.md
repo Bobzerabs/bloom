@@ -27,8 +27,9 @@ Edit `settings.json` with any text editor while Bloom is running. Changes are ap
 | `bloom-dock-icon-only`          | `"true"` / `"false"`             | `"false"` | Minimal icon-only style (no background/padding around icons).                                                                                                                    |
 | `bloom-dock-tray-enabled`       | `"true"` / `"false"`             | `"true"`  | Show system tray shortcut buttons (hidden icons, network, sound, notifications) at the right end of the dock. |
 | `bloom-dock-magnify`            | `"true"` / `"false"`             | `"true"`  | macOS-style magnification of dock icons near the pointer. |
-| `bloom-dock-magnify-size`       | number `1.2` - `2.0`             | `1.6`     | Maximum magnification factor. |
+| `bloom-dock-magnify-size`       | number `1.1` - `1.6`             | `1.3`     | Maximum magnification factor. |
 | `bloom-dock-bounce`             | `"true"` / `"false"`             | `"true"`  | Bounce the icon of an app that is being launched. |
+| `bloom-dock-openclose-anim`     | `"true"` / `"false"`             | `"false"` | macOS-style grow-in / shrink-out animation for app icons. |
 | `bloom-language`                | `"pt"` / `"en"`                  | system   | Interface language (Português / English). |
 | `bloom-dock-all-monitors`       | `"true"` / `"false"`             | `"false"` | Experimental. Show an extra dock on every non-primary monitor. |
 | `bloom-start-icon`              | icon key / `custom:<data URI>`   | `"default"` | Start button icon: `default`, `bloom-colorful`, `bloom-golden`, `bloom-biscuit`, `windows`, or `custom:` followed by an uploaded image's data URI.                               |
