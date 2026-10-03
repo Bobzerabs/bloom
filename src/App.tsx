@@ -1,3 +1,4 @@
+import { useT, getLocale, getLanguage } from "./i18n";
 import { motion, AnimatePresence, useAnimation } from "framer-motion";
 import { useEffect, useState, useCallback, useRef, memo } from "react";
 import { listen } from "@tauri-apps/api/event";
@@ -423,6 +424,7 @@ const TitleMarquee = ({ title }: { title: string }) => {
 };
 
 function App() {
+	const t = useT();
 	useEffect(() => {
 		return initTheme();
 	}, []);
@@ -1190,15 +1192,15 @@ function App() {
 	const timerDisplaySeconds =
 		timerSeconds > 0 || isTimerFinished ? timerSeconds : lastDurationSeconds;
 	const primaryTimerLabel = isTimerRunning
-		? "Pause"
+		? t("Pause")
 		: timerSeconds > 0
-			? "Resume"
+			? t("Resume")
 			: isTimerFinished
-				? "Restart"
-				: "Start";
+				? t("Restart")
+				: t("Start");
 	const timerEndTime =
 		timerSeconds > 0 && !isTimerFinished
-			? new Date(Date.now() + timerSeconds * 1000).toLocaleTimeString([], {
+			? new Date(Date.now() + timerSeconds * 1000).toLocaleTimeString(getLocale(), {
 					hour: "2-digit",
 					minute: "2-digit",
 					hour12: !timeFormat24h
@@ -1350,7 +1352,7 @@ function App() {
 		const updateTime = () => {
 			const now = new Date();
 			setTime(
-				now.toLocaleTimeString([], {
+				now.toLocaleTimeString(getLocale(), {
 					hour: "2-digit",
 					minute: "2-digit",
 					hour12: !timeFormat24h
@@ -1749,7 +1751,7 @@ function App() {
 					<div
 						className="passive-feature"
 						key="weather"
-						title={cityName ? `${weatherCondition} — ${cityName}` : weatherCondition}
+						title={cityName ? `${t(weatherCondition)} — ${cityName}` : t(weatherCondition)}
 					>
 						<WeatherIcon size={12} strokeWidth={2.2} />
 						<span className="label">
@@ -1770,28 +1772,28 @@ function App() {
 				);
 			case "cpu":
 				return (
-					<div className="passive-feature" key="cpu" title="CPU Usage">
+					<div className="passive-feature" key="cpu" title={t("CPU Usage")}>
 						<Cpu size={12} strokeWidth={2} />
 						<span className="label">{cpuUsage}%</span>
 					</div>
 				);
 			case "ram":
 				return (
-					<div className="passive-feature" key="ram" title="RAM Usage">
+					<div className="passive-feature" key="ram" title={t("RAM Usage")}>
 						<MemoryStick size={12} strokeWidth={2} />
 						<span className="label">{Math.round(ramUsage)}%</span>
 					</div>
 				);
 			case "disk":
 				return (
-					<div className="passive-feature" key="disk" title="Free Disk Space">
+					<div className="passive-feature" key="disk" title={t("Free Disk Space")}>
 						<HardDrive size={12} strokeWidth={2} />
 						<span className="label">{diskSpace}GB</span>
 					</div>
 				);
 			case "net":
 				return (
-					<div className="passive-feature" key="net" title="Network Speed">
+					<div className="passive-feature" key="net" title={t("Network Speed")}>
 						<ArrowUpDown size={12} strokeWidth={2} />
 						<span className="label">
 							↑{formatBytes(netUpSpeed)} ↓{formatBytes(netDownSpeed)}
@@ -2119,7 +2121,7 @@ function App() {
 																		invoke("open_sound_settings").catch(() => {});
 																	}}
 																	whileTap={{ scale: 0.9 }}
-																	title="Audio Output"
+																	title={t("Audio Output")}
 																>
 																	<HeadphonesIcon size={20} style={{ opacity: 0.5 }} />
 																</motion.button>
@@ -2294,7 +2296,7 @@ function App() {
 															>
 																<GreenDownArrowIcon />
 																<span className="label" style={{ color: "#32D74B" }}>
-																	Update Available
+																	{t("Update Available")}
 																</span>
 															</motion.div>
 														) : (
@@ -2316,10 +2318,10 @@ function App() {
 																	style={{ color: showLowBatteryPulse ? "#FF453A" : "inherit" }}
 																>
 																	{showLowBatteryPulse
-																		? "Low Battery"
+																		? t("Low Battery")
 																		: isCharging
-																			? "Charging"
-																			: "On Battery"}{" "}
+																			? t("Charging")
+																			: t("On Battery")}{" "}
 																	• {batteryLevel}%
 																</span>
 															</motion.div>
@@ -2520,15 +2522,15 @@ function App() {
 														toggleWifi();
 													}}
 													onContextMenu={handleWifiRightClick}
-													title="Left-click to toggle, Right-click for Settings"
+													title={t("Left-click to toggle, Right-click for Settings")}
 												>
 													<div className="cc-pill-icon-wrapper">
 														<WifiIcon connected={wifiEnabled} />
 													</div>
 													<div className="cc-pill-info">
-														<span className="cc-pill-title">Wi-Fi</span>
+														<span className="cc-pill-title">{t("Wi-Fi")}</span>
 														<span className="cc-pill-status">
-															{wifiEnabled ? "Connected" : "Off"}
+															{wifiEnabled ? t("Connected") : t("Off")}
 														</span>
 													</div>
 												</div>
@@ -2537,19 +2539,19 @@ function App() {
 												<div
 													className={`cc-pill-tile ${dockMode === "fixed" ? "active" : ""}`}
 													onClick={toggleDockModeSetting}
-													title="Cycle dock mode: Fixed / Smart / Peek"
+													title={t("Cycle dock mode: Fixed / Smart / Peek")}
 												>
 													<div className="cc-pill-icon-wrapper">
 														<DockIcon />
 													</div>
 													<div className="cc-pill-info">
-														<span className="cc-pill-title">Dock Mode</span>
+														<span className="cc-pill-title">{t("Dock Mode")}</span>
 														<span className="cc-pill-status">
 															{dockMode === "fixed"
-																? "Fixed"
+																? t("Fixed")
 																: dockMode === "smart"
-																	? "Smart"
-																	: "Peek"}
+																	? t("Smart")
+																	: t("Peek")}
 														</span>
 													</div>
 												</div>
@@ -2562,15 +2564,15 @@ function App() {
 														toggleBluetooth();
 													}}
 													onContextMenu={handleBluetoothRightClick}
-													title="Left-click to toggle, Right-click for Settings"
+													title={t("Left-click to toggle, Right-click for Settings")}
 												>
 													<div className="cc-pill-icon-wrapper">
 														<BluetoothIcon />
 													</div>
 													<div className="cc-pill-info">
-														<span className="cc-pill-title">Bluetooth</span>
+														<span className="cc-pill-title">{t("Bluetooth")}</span>
 														<span className="cc-pill-status">
-															{bluetoothEnabled ? "On" : "Off"}
+															{bluetoothEnabled ? t("On") : t("Off")}
 														</span>
 													</div>
 												</div>
@@ -2579,19 +2581,19 @@ function App() {
 												<div
 													className={`cc-pill-tile ${notchMode === "fixed" ? "active" : ""}`}
 													onClick={toggleNotchModeSetting}
-													title="Cycle notch mode: Fixed / Smart / Peek"
+													title={t("Cycle notch mode: Fixed / Smart / Peek")}
 												>
 													<div className="cc-pill-icon-wrapper">
 														<NotchIcon />
 													</div>
 													<div className="cc-pill-info">
-														<span className="cc-pill-title">Notch Mode</span>
+														<span className="cc-pill-title">{t("Notch Mode")}</span>
 														<span className="cc-pill-status">
 															{notchMode === "fixed"
-																? "Fixed"
+																? t("Fixed")
 																: notchMode === "smart"
-																	? "Smart"
-																	: "Peek"}
+																	? t("Smart")
+																	: t("Peek")}
 														</span>
 													</div>
 												</div>
@@ -2605,7 +2607,7 @@ function App() {
 														e.stopPropagation();
 														setDndActive((prev) => !prev);
 													}}
-													title={`Focus / DND: ${dndActive ? "On" : "Off"}`}
+													title={`${t("Focus / DND")}: ${dndActive ? t("On") : t("Off")}`}
 												>
 													<MoonIcon />
 												</button>
@@ -2615,7 +2617,7 @@ function App() {
 														e.stopPropagation();
 														openBatterySaverSettings();
 													}}
-													title={`Energy Saver: ${batterySaverEnabled ? "On" : "Off"} — Click to open Settings`}
+													title={`${t("Energy Saver")}: ${batterySaverEnabled ? t("On") : t("Off")} — ${t("Click to open Settings")}`}
 												>
 													<BatterySaverIcon />
 												</button>
@@ -2625,7 +2627,7 @@ function App() {
 														e.stopPropagation();
 														openSystemTray(e);
 													}}
-													title="System Tray"
+													title={t("System Tray")}
 												>
 													<TrayIcon />
 												</button>
@@ -2635,7 +2637,7 @@ function App() {
 														e.stopPropagation();
 														invoke("open_notification_center");
 													}}
-													title="Notification Center"
+													title={t("Notification Center")}
 												>
 													<BellIcon />
 												</button>
@@ -2645,7 +2647,7 @@ function App() {
 														e.stopPropagation();
 														openSettingsWindow();
 													}}
-													title="Bloom Settings"
+													title={t("Bloom Settings")}
 												>
 													<SettingsIcon />
 												</button>
@@ -2655,7 +2657,7 @@ function App() {
 														e.stopPropagation();
 														invoke("restart_bloom");
 													}}
-													title="Restart Bloom"
+													title={t("Restart Bloom")}
 												>
 													<ReloadIcon />
 												</button>
@@ -2667,7 +2669,7 @@ function App() {
 												<div className="cc-classic-slider-row">
 													<div className="cc-classic-slider-label">
 														<VolumeLowIcon style={{ opacity: 0.5 }} />
-														<span>Volume</span>
+														<span>{t("Volume")}</span>
 													</div>
 													<div className="cc-classic-slider-track">
 														<input
@@ -2695,7 +2697,7 @@ function App() {
 														<div className="cc-classic-slider-row" key={monitor.id}>
 															<div className="cc-classic-slider-label" title={monitor.name}>
 																<BrightnessLowIcon />
-																<span>{`Display ${index + 1}`}</span>
+																<span>{t("Display {n}", { n: index + 1 })}</span>
 															</div>
 															<div className="cc-classic-slider-track">
 																<input
@@ -2723,7 +2725,7 @@ function App() {
 												<div className="cc-classic-slider-row">
 													<div className="cc-classic-slider-label">
 														<BrightnessLowIcon />
-														<span>Brightness</span>
+														<span>{t("Brightness")}</span>
 													</div>
 													<div className="cc-classic-slider-track">
 														<input
@@ -2777,7 +2779,7 @@ function App() {
 													<button
 														className="announcement-close"
 														onClick={dismissAnnouncement}
-														title="Dismiss"
+														title={t("Dismiss")}
 													>
 														<X size={13} strokeWidth={2.2} />
 													</button>
@@ -2792,7 +2794,7 @@ function App() {
 														className="announcement-link"
 														onClick={() => openUrl(announcement.url!)}
 													>
-														Learn more
+														{t("Learn more")}
 													</button>
 												)}
 											</motion.div>
@@ -2821,19 +2823,19 @@ function App() {
 													<div className="timer-main">
 														<div className="timer-status">
 															{isEditingTimer
-																? "Set duration"
+																? t("Set duration")
 																: isTimerFinished
-																	? "Time's up"
+																	? t("Time's up")
 																	: timerEndTime
-																		? `${timerState === "paused" ? "Paused · " : ""}ends ${timerEndTime}`
-																		: "Click to edit"}
+																		? `${timerState === "paused" ? t("Paused · ") : ""}${t("ends {time}", { time: timerEndTime })}`
+																		: t("Click to edit")}
 														</div>
 
 														<div className={`timer-clock-row ${isEditingTimer ? "editing" : ""}`}>
 															<div
 																className={`timer-clock ${isEditingTimer && !timerEditValid ? "invalid" : ""}`}
 																onClick={beginTimerEdit}
-																title={isTimerRunning ? undefined : "Click to set a duration"}
+																title={isTimerRunning ? undefined : t("Click to set a duration")}
 															>
 																{minuteDigitItems.map(({ digit, key }) => (
 																	<RollDigit key={key} value={digit} compact={clockCompact} />
@@ -2850,7 +2852,7 @@ function App() {
 																	className="timer-edit-input"
 																	type="text"
 																	inputMode="numeric"
-																	aria-label="Set timer duration"
+																	aria-label={t("Set timer duration")}
 																	value={formatTimerDigits(timerEditDigits)}
 																	onChange={(e) =>
 																		setTimerEditDigits(
@@ -2886,7 +2888,7 @@ function App() {
 															onClick={resetTimer}
 															className="timer-btn-reset"
 															disabled={timerSeconds === 0 && !isTimerFinished}
-															title="Reset"
+															title={t("Reset")}
 														>
 															<RotateCcw size={14} strokeWidth={2.5} />
 														</button>
@@ -2918,6 +2920,7 @@ function App() {
 }
 
 function Calendar() {
+	useT();
 	const [date] = useState(new Date());
 
 	const daysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -2925,7 +2928,7 @@ function Calendar() {
 
 	const currentMonth = date.getMonth();
 	const currentYear = date.getFullYear();
-	const monthName = date.toLocaleString("default", { month: "long" });
+	const monthName = date.toLocaleString(getLocale(), { month: "long" });
 
 	const totalDays = daysInMonth(currentYear, currentMonth);
 	const startDay = firstDayOfMonth(currentYear, currentMonth);
@@ -2957,7 +2960,7 @@ function Calendar() {
 				</span>
 			</div>
 			<div className="calendar-grid">
-				{["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+				{(getLanguage() === "pt" ? ["D", "S", "T", "Q", "Q", "S", "S"] : ["S", "M", "T", "W", "T", "F", "S"]).map((d, i) => (
 					<div key={`${d}-${i}`} className="day-name">
 						{d}
 					</div>

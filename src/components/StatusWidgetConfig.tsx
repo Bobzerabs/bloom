@@ -1,3 +1,4 @@
+import { useT } from "../i18n";
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
 	DndContext,
@@ -62,6 +63,7 @@ const MAX_PER_ZONE = 2;
 
 /* ── Draggable pool chip ── */
 function PoolChip({ id }: { id: string }) {
+	const t = useT();
 	const def = WIDGET_DEFS.find((w) => w.id === id)!;
 	const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id });
 	const Icon = def.icon;
@@ -73,7 +75,7 @@ function PoolChip({ id }: { id: string }) {
 			{...attributes}
 		>
 			<Icon size={12} strokeWidth={2} style={{ color: def.color }} />
-			<span>{def.label}</span>
+			<span>{t(def.label)}</span>
 		</div>
 	);
 }
@@ -94,6 +96,7 @@ function SortablePlacedChip({
 	onRemove: (id: string) => void;
 	onMove: (id: string, dir: -1 | 1) => void;
 }) {
+	const t = useT();
 	const def = WIDGET_DEFS.find((w) => w.id === id)!;
 	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
 		id
@@ -116,7 +119,7 @@ function SortablePlacedChip({
 		>
 			<div {...attributes} {...listeners} className="widget-pill-drag-handle">
 				<Icon size={12} strokeWidth={2} style={{ color: def.color }} />
-				<span>{def.label}</span>
+				<span>{t(def.label)}</span>
 			</div>
 			<div className="widget-pill-btns">
 				{idx > 0 && (
@@ -129,12 +132,12 @@ function SortablePlacedChip({
 						<ChevronDown size={9} />
 					</button>
 				)}
-				<button className="widget-pill-btn" title="Swap side" onClick={() => onSwap(id)}>
+				<button className="widget-pill-btn" title={t("Swap side")} onClick={() => onSwap(id)}>
 					<ArrowLeftRight size={9} />
 				</button>
 				<button
 					className="widget-pill-btn widget-pill-btn--x"
-					title="Remove"
+					title={t("Remove")}
 					onClick={() => onRemove(id)}
 				>
 					<X size={10} />
@@ -160,13 +163,14 @@ function DropZone({
 	onRemove: (id: string) => void;
 	onMove: (id: string, dir: -1 | 1) => void;
 }) {
+	const t = useT();
 	const { setNodeRef, isOver } = useDroppable({ id });
 	return (
 		<div
 			ref={setNodeRef}
 			className={`widget-config-zone ${isOver ? "widget-config-zone--over" : ""}`}
 		>
-			<span className="widget-config-side">{side === "left" ? "Left" : "Right"}</span>
+			<span className="widget-config-side">{side === "left" ? t("Left") : t("Right")}</span>
 			<div className="widget-config-chips">
 				<SortableContext items={items} strategy={horizontalListSortingStrategy}>
 					{items.length > 0 ? (
@@ -182,7 +186,7 @@ function DropZone({
 							/>
 						))
 					) : (
-						<span className="widget-config-empty">Drop here</span>
+						<span className="widget-config-empty">{t("Drop here")}</span>
 					)}
 				</SortableContext>
 			</div>
@@ -197,6 +201,7 @@ interface StatusWidgetConfigProps {
 }
 
 export function StatusWidgetConfig({ value, onChange }: StatusWidgetConfigProps) {
+	const t = useT();
 	const [config, setConfig] = useState<WidgetConfig>(() => value || DEFAULT_CONFIG);
 	const [activeId, setActiveId] = useState<string | null>(null);
 	const draggedFromZone = useRef<"left" | "right" | null>(null);
@@ -377,7 +382,7 @@ export function StatusWidgetConfig({ value, onChange }: StatusWidgetConfigProps)
 				{activeDef ? (
 					<div className="widget-pill widget-pill--dragging">
 						<activeDef.icon size={12} strokeWidth={2} style={{ color: activeDef.color }} />
-						<span>{activeDef.label}</span>
+						<span>{t(activeDef.label)}</span>
 					</div>
 				) : null}
 			</DragOverlay>

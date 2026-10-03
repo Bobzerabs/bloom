@@ -1,5 +1,6 @@
 import { Palette, Droplet, Contrast, Droplets, Sun, Square, Maximize2 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { useT } from "../i18n";
 
 interface AppearanceTabProps {
 	themeMode: string;
@@ -34,12 +35,13 @@ export function AppearanceTab({
 	scale,
 	handleScaleChange
 }: AppearanceTabProps) {
+	const t = useT();
 	const showCustomColor = themeMode === "custom";
 	const showAdvancedSliders = themeMode === "custom" || themeMode === "adaptive";
 
 	return (
 		<>
-			<div className="setting-group-label">Theme</div>
+			<div className="setting-group-label">{t("Theme")}</div>
 			<div className="setting-group">
 				<SettingRow icon={Palette} label="Theme Mode" desc="Configure visual styling">
 					<select
@@ -47,10 +49,10 @@ export function AppearanceTab({
 						value={themeMode}
 						onChange={(e) => handleThemeModeChange(e.target.value)}
 					>
-						<option value="dark">Dark (Translucent)</option>
-						<option value="light">Light (Translucent)</option>
-						<option value="custom">Custom Color</option>
-						<option value="adaptive">Adaptive Accent</option>
+						<option value="dark">{t("Dark (Translucent)")}</option>
+						<option value="light">{t("Light (Translucent)")}</option>
+						<option value="custom">{t("Custom Color")}</option>
+						<option value="adaptive">{t("Adaptive Accent")}</option>
 					</select>
 				</SettingRow>
 
@@ -75,7 +77,7 @@ export function AppearanceTab({
 				<SettingRow
 					icon={Contrast}
 					label="Background Opacity"
-					desc={`Adjust theme transparency (${Math.round(themeOpacity * 100)}%)`}
+					desc={t("Adjust theme transparency ({n}%)", { n: Math.round(themeOpacity * 100) })}
 					divider={showAdvancedSliders}
 				>
 					<input
@@ -94,7 +96,7 @@ export function AppearanceTab({
 						<SettingRow
 							icon={Droplets}
 							label="Color Saturation"
-							desc={`Adjust theme color vibrancy (${Math.round(themeSaturation * 100)}%)`}
+							desc={t("Adjust theme color vibrancy ({n}%)", { n: Math.round(themeSaturation * 100) })}
 						>
 							<input
 								type="range"
@@ -110,7 +112,7 @@ export function AppearanceTab({
 						<SettingRow
 							icon={Sun}
 							label="Background Brightness"
-							desc={`Adjust background lightness (${Math.round(themeBrightness * 100)}%)`}
+							desc={t("Adjust background lightness ({n}%)", { n: Math.round(themeBrightness * 100) })}
 							divider={false}
 						>
 							<input
@@ -127,7 +129,7 @@ export function AppearanceTab({
 				)}
 			</div>
 
-			<div className="setting-group-label">Display</div>
+			<div className="setting-group-label">{t("Display")}</div>
 			<div className="setting-group">
 				<SettingRow icon={Square} label="Screen Corners" desc="Rounded top edges">
 					<label className="toggle-switch">
@@ -139,7 +141,7 @@ export function AppearanceTab({
 				<SettingRow
 					icon={Maximize2}
 					label="UI & Font Scale"
-					desc={`Adjust desktop size (${Math.round(scale * 100)}%)`}
+					desc={t("Adjust desktop size ({n}%)", { n: Math.round(scale * 100) })}
 					divider={false}
 				>
 					<div className="scale-button-container">
@@ -147,7 +149,7 @@ export function AppearanceTab({
 							onClick={() => handleScaleChange(Math.max(0.8, parseFloat((scale - 0.1).toFixed(1))))}
 							disabled={scale <= 0.8}
 							className="scale-adjust-btn"
-							title="Decrease Scale"
+							title={t("Decrease Scale")}
 						>
 							—
 						</button>
@@ -156,7 +158,7 @@ export function AppearanceTab({
 							onClick={() => handleScaleChange(Math.min(1.3, parseFloat((scale + 0.1).toFixed(1))))}
 							disabled={scale >= 1.3}
 							className="scale-adjust-btn"
-							title="Increase Scale"
+							title={t("Increase Scale")}
 						>
 							+
 						</button>

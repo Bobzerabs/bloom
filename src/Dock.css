@@ -858,6 +858,28 @@ body {
 }
 
 /* macOS-style magnification (scale / translate are driven from Dock.tsx) */
+.dock-mag-bg {
+	display: none;
+}
+
+.dock-magnify .dock.dock-expanded {
+	isolation: isolate;
+	background: transparent;
+}
+
+/* The bar background moves to this layer so it can grow with the icons. */
+.dock-magnify .dock.dock-expanded .dock-mag-bg {
+	display: block;
+	position: absolute;
+	z-index: -1;
+	pointer-events: none;
+	top: calc(-1 * var(--mag-y, 0px));
+	bottom: 0;
+	left: calc(-1 * var(--mag-x, 0px));
+	right: calc(-1 * var(--mag-x, 0px));
+	border-radius: inherit;
+	background: var(--bloom-bg, rgba(0, 0, 0, 0.8));
+}
 .dock-magnify .dock-icon {
 	transform-origin: 50% 100%;
 }
@@ -898,4 +920,13 @@ body {
 
 .dock-icon.dock-bounce {
 	animation: dock-bounce 1.2s ease-out 1;
+}
+
+/* Keep the curved side corners attached to the growing bar */
+.dock-magnify .dock.dock-expanded::before {
+	left: calc(-13px - var(--mag-x, 0px));
+}
+
+.dock-magnify .dock.dock-expanded::after {
+	right: calc(-13px - var(--mag-x, 0px));
 }

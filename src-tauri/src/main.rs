@@ -348,11 +348,31 @@ fn main() {
             {
                 use tauri::menu::{Menu, MenuItem};
                 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-                let quit_item = MenuItem::with_id(app, "quit", "Quit Bloom", true, None::<&str>)?;
-                let restart_item =
-                    MenuItem::with_id(app, "restart", "Restart Bloom", true, None::<&str>)?;
-                let settings_item =
-                    MenuItem::with_id(app, "settings", "Open Settings", true, None::<&str>)?;
+                // Tray menu text follows the saved language (applied on next start).
+                let pt = crate::utils::get_setting_str(app.handle(), "bloom-language")
+                    .map(|l| l.trim_matches('"') == "pt")
+                    .unwrap_or(false);
+                let quit_item = MenuItem::with_id(
+                    app,
+                    "quit",
+                    if pt { "Sair do Bloom" } else { "Quit Bloom" },
+                    true,
+                    None::<&str>,
+                )?;
+                let restart_item = MenuItem::with_id(
+                    app,
+                    "restart",
+                    if pt { "Reiniciar o Bloom" } else { "Restart Bloom" },
+                    true,
+                    None::<&str>,
+                )?;
+                let settings_item = MenuItem::with_id(
+                    app,
+                    "settings",
+                    if pt { "Abrir Configurações" } else { "Open Settings" },
+                    true,
+                    None::<&str>,
+                )?;
                 let menu = Menu::with_items(app, &[&settings_item, &restart_item, &quit_item])?;
                 let ah = app.handle().clone();
                 TrayIconBuilder::new()

@@ -17,6 +17,7 @@ import {
 import type { SettingsTab } from "./settings/index";
 import { useAnnouncement } from "./hooks/useAnnouncement";
 import { initTheme } from "./theme";
+import { useT } from "./i18n";
 import "./Settings.css";
 
 const appWindow = getCurrentWebviewWindow();
@@ -32,6 +33,7 @@ const TABS: { id: SettingsTab; label: string; icon: typeof Settings }[] = [
 
 function SettingsApp() {
 	const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+	const t = useT();
 	const settings = useSettings();
 	const { announcement, dismissed, dismiss } = useAnnouncement();
 
@@ -74,9 +76,9 @@ function SettingsApp() {
 		<div className="settings-container" style={{ zoom: settings.scale }}>
 			<div className="title-bar" data-tauri-drag-region>
 				<span className="title-text" data-tauri-drag-region>
-					Settings
+					{t("Settings")}
 				</span>
-				<button className="close-btn" onClick={handleClose} title="Close Settings">
+				<button className="close-btn" onClick={handleClose} title={t("Close Settings")}>
 					<X size={12} strokeWidth={1.5} className="close-btn-icon" />
 				</button>
 			</div>
@@ -92,7 +94,7 @@ function SettingsApp() {
 							<div className="sidebar-tab-icon">
 								<Icon size={14} strokeWidth={1.5} />
 							</div>
-							<span>{label}</span>
+							<span>{t(label)}</span>
 						</button>
 					))}
 				</div>
@@ -112,13 +114,13 @@ function SettingsApp() {
 									className="announcement-banner-link"
 									onClick={() => openUrl(announcement.url!)}
 								>
-									Learn more
+									{t("Learn more")}
 								</button>
 							)}
 							<button
 								className="announcement-banner-close"
 								onClick={dismiss}
-								title="Dismiss"
+								title={t("Dismiss")}
 							>
 								<X size={12} strokeWidth={2.2} />
 							</button>

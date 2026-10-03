@@ -1,4 +1,5 @@
 import type { SettingRowProps } from "./types";
+import { useT } from "../i18n";
 
 export function SettingRow({
 	icon: Icon,
@@ -10,6 +11,7 @@ export function SettingRow({
 	onClick,
 	children
 }: SettingRowProps) {
+	const t = useT();
 	const className = ["setting-item", action ? "action" : "", danger ? "danger" : ""]
 		.filter(Boolean)
 		.join(" ");
@@ -21,8 +23,8 @@ export function SettingRow({
 					<Icon size={14} strokeWidth={1.5} />
 				</div>
 				<div className="setting-info">
-					<span className="setting-label">{label}</span>
-					{desc && <span className="setting-desc">{desc}</span>}
+					<span className="setting-label">{typeof label === "string" ? t(label) : label}</span>
+					{desc && <span className="setting-desc">{typeof desc === "string" ? t(desc) : desc}</span>}
 				</div>
 				{children}
 			</div>

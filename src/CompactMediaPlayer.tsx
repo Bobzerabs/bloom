@@ -1,3 +1,4 @@
+import { useT } from "./i18n";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence, useAnimation } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
@@ -127,6 +128,7 @@ export function CompactMediaPlayer({
 	onAnimateNext,
 	onLayoutChange
 }: CompactMediaPlayerProps) {
+	const t = useT();
 	const seekRef = useRef<HTMLInputElement>(null);
 
 	const positionMs = mediaInfo.position_ms ?? 0;
@@ -270,7 +272,7 @@ export function CompactMediaPlayer({
 						onVolumeExpandedChange(!volumeExpanded);
 					}}
 					whileTap={{ scale: 0.9 }}
-					title="Volume"
+					title={t("Volume")}
 				>
 					<SpeakerIcon size={22} muted={volume === 0} />
 				</motion.button>
@@ -342,7 +344,7 @@ export function CompactMediaPlayer({
 						invoke("open_sound_settings").catch(() => {});
 					}}
 					whileTap={{ scale: 0.9 }}
-					title="Audio Output"
+					title={t("Audio Output")}
 				>
 					<HeadphonesIcon size={22} />
 				</motion.button>

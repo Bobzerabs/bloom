@@ -1,5 +1,6 @@
-import { Power, Download, Clock, BatteryWarning, RefreshCw, LogOut } from "lucide-react";
+import { Power, Download, Clock, BatteryWarning, RefreshCw, LogOut, Languages } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { useT, useLanguage, setLanguage, type Language } from "../i18n";
 
 interface GeneralTabProps {
 	autostart: boolean;
@@ -26,9 +27,11 @@ export function GeneralTab({
 	restartBloom,
 	quitBloom
 }: GeneralTabProps) {
+	const t = useT();
+	const language = useLanguage();
 	return (
 		<>
-			<div className="setting-group-label">System</div>
+			<div className="setting-group-label">{t("System")}</div>
 			<div className="setting-group">
 				<SettingRow icon={Power} label="Launch at Login" desc="Open Bloom automatically">
 					<label className="toggle-switch">
@@ -48,6 +51,17 @@ export function GeneralTab({
 					</label>
 				</SettingRow>
 
+				<SettingRow icon={Languages} label="Language" desc="Choose the app language">
+					<select
+						className="settings-select"
+						value={language}
+						onChange={(e) => setLanguage(e.target.value as Language)}
+					>
+						<option value="pt">Português</option>
+						<option value="en">English</option>
+					</select>
+				</SettingRow>
+
 				<SettingRow icon={Clock} label="24-Hour Time" desc="Use 24-hour clock format">
 					<label className="toggle-switch">
 						<input type="checkbox" checked={timeFormat24h} onChange={toggleTimeFormat24h} />
@@ -58,7 +72,7 @@ export function GeneralTab({
 				<SettingRow
 					icon={BatteryWarning}
 					label="Low Battery Alert"
-					desc={`Trigger at ${lowBatteryThreshold}%`}
+					desc={t("Trigger at {n}%", { n: lowBatteryThreshold })}
 					divider={false}
 				>
 					<input
@@ -73,7 +87,7 @@ export function GeneralTab({
 				</SettingRow>
 			</div>
 
-			<div className="setting-group-label">App</div>
+			<div className="setting-group-label">{t("App")}</div>
 			<div className="setting-group">
 				<SettingRow
 					icon={RefreshCw}

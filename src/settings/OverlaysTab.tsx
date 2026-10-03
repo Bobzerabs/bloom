@@ -1,5 +1,6 @@
 import { Volume2, Sun, ArrowLeftToLine, ArrowRightToLine } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { useT } from "../i18n";
 
 interface OverlaysTabProps {
 	volumeOverlayEnabled: boolean;
@@ -22,9 +23,10 @@ export function OverlaysTab({
 	brightnessEdgeEnabled,
 	toggleBrightnessEdge
 }: OverlaysTabProps) {
+	const t = useT();
 	return (
 		<>
-			<div className="setting-group-label">Overlays</div>
+			<div className="setting-group-label">{t("Overlays")}</div>
 			<div className="setting-group">
 				<SettingRow icon={Volume2} label="Volume HUD" desc="Bloom volume overlay">
 					<label className="toggle-switch">

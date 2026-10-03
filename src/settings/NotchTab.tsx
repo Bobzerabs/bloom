@@ -13,6 +13,7 @@ import {
 import { SettingRow } from "./SettingRow";
 import { StatusWidgetConfig } from "../components/StatusWidgetConfig";
 import type { WidgetConfig } from "./types";
+import { useT } from "../i18n";
 
 interface NotchTabProps {
 	notchMode: string;
@@ -82,9 +83,10 @@ export function NotchTab({
 	statusWidgets,
 	handleWidgetsChange
 }: NotchTabProps) {
+	const t = useT();
 	return (
 		<>
-			<div className="setting-group-label">Notch</div>
+			<div className="setting-group-label">{t("Notch")}</div>
 			<div className="setting-group">
 				<SettingRow icon={PanelTop} label="Notch Behavior" desc="Choose how the notch appears">
 					<select
@@ -92,9 +94,9 @@ export function NotchTab({
 						value={notchMode}
 						onChange={(e) => setNotchModeValue(e.target.value)}
 					>
-						<option value="fixed">Fixed</option>
-						<option value="smart">Smart</option>
-						<option value="peek">Peek</option>
+						<option value="fixed">{t("Fixed")}</option>
+						<option value="smart">{t("Smart")}</option>
+						<option value="peek">{t("Peek")}</option>
 					</select>
 				</SettingRow>
 
@@ -189,7 +191,7 @@ export function NotchTab({
 				)}
 			</div>
 
-			<div className="setting-group-label">Weather</div>
+			<div className="setting-group-label">{t("Weather")}</div>
 			<div className="setting-group">
 				<SettingRow
 					icon={CloudSun}
@@ -213,7 +215,7 @@ export function NotchTab({
 						<div className="city-input-row">
 							<input
 								type="text"
-								placeholder="Search city..."
+								placeholder={t("Search city...")}
 								value={cityName}
 								onChange={(e) => setCityName(e.target.value)}
 								onFocus={() => citySearchResults.length > 0 && setShowCityDropdown(true)}
@@ -235,7 +237,7 @@ export function NotchTab({
 										e.preventDefault();
 										handleCityClear();
 									}}
-									title="Clear city"
+									title={t("Clear city")}
 								>
 									<X size={10} strokeWidth={2.5} />
 								</button>
@@ -262,7 +264,7 @@ export function NotchTab({
 				)}
 			</div>
 
-			<div className="setting-group-label">Widgets</div>
+			<div className="setting-group-label">{t("Widgets")}</div>
 			<div className="setting-group">
 				<StatusWidgetConfig value={statusWidgets} onChange={handleWidgetsChange} />
 			</div>

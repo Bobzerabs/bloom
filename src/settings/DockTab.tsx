@@ -12,6 +12,7 @@ import {
 	MonitorSmartphone
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { useT } from "../i18n";
 
 const START_ICON_PRESETS = [
 	{ key: "default", src: "/bloom.png", label: "Bloom" },
@@ -89,6 +90,7 @@ export function DockTab({
 	startIcon,
 	handleStartIconChange
 }: DockTabProps) {
+	const t = useT();
 	const [uploadError, setUploadError] = useState<string | null>(null);
 
 	// Shrinks the picked image to at most 256x256 (PNG, transparency kept) so the
@@ -141,7 +143,7 @@ export function DockTab({
 
 	return (
 		<>
-			<div className="setting-group-label">Dock</div>
+			<div className="setting-group-label">{t("Dock")}</div>
 			<div className="setting-group">
 				<SettingRow icon={Monitor} label="Bloom Dock" desc="Replace Windows taskbar">
 					<label className="toggle-switch">
@@ -162,9 +164,9 @@ export function DockTab({
 								value={dockMode}
 								onChange={(e) => setDockModeValue(e.target.value)}
 							>
-								<option value="fixed">Fixed</option>
-								<option value="smart">Smart</option>
-								<option value="peek">Peek</option>
+								<option value="fixed">{t("Fixed")}</option>
+								<option value="smart">{t("Smart")}</option>
+								<option value="peek">{t("Peek")}</option>
 							</select>
 						</SettingRow>
 
@@ -201,7 +203,7 @@ export function DockTab({
 							<SettingRow
 								icon={ZoomIn}
 								label="Magnification Size"
-								desc={`How much icons grow (${Math.round(dockMagnifySize * 100)}%)`}
+								desc={t("How much icons grow ({n}%)", { n: Math.round(dockMagnifySize * 100) })}
 							>
 								<input
 									type="range"
@@ -316,7 +318,7 @@ export function DockTab({
 								<div
 									onClick={() => document.getElementById("start-icon-file-input")?.click()}
 									style={startIconTileStyle(startIcon.startsWith("custom:"))}
-									title="Custom icon"
+									title={t("Custom icon")}
 								>
 									{startIcon.startsWith("custom:") ? (
 										<img
@@ -338,7 +340,7 @@ export function DockTab({
 									<div
 										onClick={() => handleStartIconChange("default")}
 										style={startIconTileStyle(false)}
-										title="Reset to default"
+										title={t("Reset to default")}
 									>
 										<RotateCcw size={18} strokeWidth={1.5} />
 									</div>

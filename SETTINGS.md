@@ -29,6 +29,7 @@ Edit `settings.json` with any text editor while Bloom is running. Changes are ap
 | `bloom-dock-magnify`            | `"true"` / `"false"`             | `"true"`  | macOS-style magnification of dock icons near the pointer. |
 | `bloom-dock-magnify-size`       | number `1.2` - `2.0`             | `1.6`     | Maximum magnification factor. |
 | `bloom-dock-bounce`             | `"true"` / `"false"`             | `"true"`  | Bounce the icon of an app that is being launched. |
+| `bloom-language`                | `"pt"` / `"en"`                  | system   | Interface language (Português / English). |
 | `bloom-dock-all-monitors`       | `"true"` / `"false"`             | `"false"` | Experimental. Show an extra dock on every non-primary monitor. |
 | `bloom-start-icon`              | icon key / `custom:<data URI>`   | `"default"` | Start button icon: `default`, `bloom-colorful`, `bloom-golden`, `bloom-biscuit`, `windows`, or `custom:` followed by an uploaded image's data URI.                               |
 | `bloom-dock-adaptive`           | `"true"` / `"false"`             | `"false"` | Fixed dock only. Stretch the dock to full width like a traditional taskbar while a window is maximized, and contract back when it's restored.                                    |

@@ -2,6 +2,7 @@ import { Download, RefreshCw, FileDown, Upload } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { GithubIcon } from "../icons";
 import { SettingRow } from "./SettingRow";
+import { useT } from "../i18n";
 
 interface AboutTabProps {
 	appVersion: string;
@@ -30,12 +31,13 @@ export function AboutTab({
 	handleExportSettings,
 	handleImportSettings
 }: AboutTabProps) {
+	const t = useT();
 	const getUpdateLabel = () => {
 		switch (updateStatus) {
 			case "checking":
 				return "Checking...";
 			case "available":
-				return `Update Available (v${updateVersion})`;
+				return t("Update Available (v{v})", { v: updateVersion });
 			case "uptodate":
 				return "Bloom is up to date";
 			case "downloading":
@@ -52,7 +54,7 @@ export function AboutTab({
 	const getUpdateDesc = () =>
 		updateStatus === "available"
 			? "Click to install and restart"
-			: `Currently running v${appVersion}`;
+			: t("Currently running v{v}", { v: appVersion });
 
 	const getExportLabel = () => {
 		if (exportStatus === "exporting") return "Exporting...";
@@ -77,7 +79,7 @@ export function AboutTab({
 					<button
 						className="about-author"
 						onClick={() => openUrl("https://github.com/SehajveerSingh2005")}
-						title="sehaz on GitHub"
+						title={t("sehaz on GitHub")}
 					>
 						<GithubIcon size={12} />
 						<span>sehaz</span>
@@ -85,7 +87,7 @@ export function AboutTab({
 				</p>
 			</div>
 
-			<div className="setting-group-label">Software Updates</div>
+			<div className="setting-group-label">{t("Software Updates")}</div>
 			<div className="setting-group">
 				<SettingRow icon={Download} label="Auto Update" desc="Update automatically on startup">
 					<label className="toggle-switch">
@@ -104,7 +106,7 @@ export function AboutTab({
 				/>
 			</div>
 
-			<div className="setting-group-label setting-group-label--spaced">Data</div>
+			<div className="setting-group-label setting-group-label--spaced">{t("Data")}</div>
 			<div className="setting-group">
 				<SettingRow
 					icon={FileDown}
