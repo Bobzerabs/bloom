@@ -3246,6 +3246,21 @@ pub fn set_secondary_menu_open(window: Window, open: bool, rect: Option<IntRect>
 
 /// Creates, repositions or removes the extra dock windows so they match the
 /// `bloom-dock-all-monitors` setting and the monitors currently connected.
+fn dock_log(msg: &str) {
+    use std::io::Write;
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let dir = std::path::Path::new(&appdata).join("bloom");
+        let _ = std::fs::create_dir_all(&dir);
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dir.join("dock-monitors.log"))
+        {
+            let _ = writeln!(file, "{}", msg);
+        }
+    }
+}
+
 pub fn sync_secondary_docks(app: &AppHandle) {
     let all_monitors = get_setting_str(app, "bloom-dock-all-monitors")
         .map(|v| v == "true")
@@ -3261,6 +3276,10 @@ pub fn sync_secondary_docks(app: &AppHandle) {
         .cloned()
         .collect();
 
+    dock_log(&format!(
+        "sync: all_monitors={} dock_enabled={} existing={:?}",
+        all_monitors, dock_enabled, existing
+    ));
     if !(all_monitors && dock_enabled) {
         for label in existing {
             if let Some(win) = app.get_webview_window(&label) {
@@ -3280,9 +3299,23 @@ pub fn sync_secondary_docks(app: &AppHandle) {
         .flatten()
         .map(|m| (m.position().x, m.position().y));
 
+    dock_log(&format!(
+        "monitors={} primary_pos={:?}",
+        monitors.len(),
+        primary_pos
+    ));
     let mut wanted: Vec<String> = Vec::new();
     for (index, monitor) in monitors.iter().enumerate() {
         let pos = monitor.position();
+        dock_log(&format!(
+            "monitor {}: pos=({}, {}) size={}x{} scale={}",
+            index,
+            pos.x,
+            pos.y,
+            monitor.size().width,
+            monitor.size().height,
+            monitor.scale_factor()
+        ));
         if Some((pos.x, pos.y)) == primary_pos {
             continue;
         }
@@ -3321,9 +3354,12 @@ pub fn sync_secondary_docks(app: &AppHandle) {
                 .inner_size(400.0, 200.0)
                 .build();
                 match built {
-                    Ok(win) => win,
+                    Ok(win) => {
+                        dock_log(&format!("created window {}", label));
+                        win
+                    }
                     Err(e) => {
-                        eprintln!("Failed to create dock window {}: {}", label, e);
+                        dock_log(&format!("FAILED to create window {}: {}", label, e));
                         continue;
                     }
                 }
@@ -3354,7 +3390,17 @@ pub fn sync_secondary_docks(app: &AppHandle) {
         if newly_created {
             let _ = window.set_ignore_cursor_events(true);
         }
-        let _ = window.show();
+        let shown = window.show();
+        dock_log(&format!(
+            "placed {} at ({}, {}) {}x{} show={:?} visible={:?}",
+            label,
+            x,
+            y,
+            width,
+            height,
+            shown.is_ok(),
+            window.is_visible().ok()
+        ));
     }
 
     for label in existing {

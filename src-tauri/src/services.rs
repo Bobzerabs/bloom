@@ -1771,13 +1771,13 @@ mod dxva2 {
 /// True when the machine has a laptop panel that reports brightness over WMI.
 static HAS_WMI_PANEL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// Appends a diagnostic line to `%APPDATA%\bloom\brightness.log` (first 20 only),
+/// Appends a diagnostic line to `%APPDATA%\bloom\brightness.log` (first 60 only),
 /// so a monitor / laptop that ignores brightness changes can be investigated.
 fn brightness_log(msg: &str) {
     use std::io::Write;
     use std::sync::atomic::{AtomicU32, Ordering};
     static COUNT: AtomicU32 = AtomicU32::new(0);
-    if COUNT.fetch_add(1, Ordering::Relaxed) >= 20 {
+    if COUNT.fetch_add(1, Ordering::Relaxed) >= 60 {
         return;
     }
     if let Ok(appdata) = std::env::var("APPDATA") {
@@ -1943,9 +1943,12 @@ fn for_each_physical_monitor(visit: &mut dyn FnMut(u32, &dxva2::PhysicalMonitor)
             let ctx = &mut *(lparam.0 as *mut VisitContext);
 
             let mut count = 0u32;
-            if dxva2::GetNumberOfPhysicalMonitorsFromHMONITOR(hmonitor, &mut count).as_bool()
-                && count > 0
-            {
+            let got = dxva2::GetNumberOfPhysicalMonitorsFromHMONITOR(hmonitor, &mut count).as_bool();
+            brightness_log(&format!(
+                "enum: hmonitor {:?} physical monitors: ok={} count={}",
+                hmonitor.0, got, count
+            ));
+            if got && count > 0 {
                 let mut monitors =
                     vec![std::mem::zeroed::<dxva2::PhysicalMonitor>(); count as usize];
                 if dxva2::GetPhysicalMonitorsFromHMONITOR(hmonitor, count, monitors.as_mut_ptr())
@@ -1982,6 +1985,10 @@ pub fn list_monitors_brightness() -> Vec<MonitorBrightness> {
         let ok = unsafe {
             dxva2::GetMonitorBrightness(mon.handle, &mut min_b, &mut cur_b, &mut max_b).as_bool()
         };
+        brightness_log(&format!(
+            "monitor {}: GetMonitorBrightness ok={} min={} cur={} max={}",
+            index, ok, min_b, cur_b, max_b
+        ));
         if ok && max_b > min_b {
             let len = mon
                 .description
