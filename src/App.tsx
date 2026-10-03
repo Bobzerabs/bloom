@@ -512,6 +512,10 @@ function App() {
 	const [bluetoothEnabled, setBluetoothEnabled] = useState(true);
 	const [batterySaverEnabled, setBatterySaverEnabled] = useState(false);
 	const [currentBrightness, setCurrentBrightness] = useState(50);
+	// One entry per DDC/CI capable monitor (desktop setups with several screens).
+	const [monitorBrightness, setMonitorBrightness] = useState<
+		{ id: number; name: string; brightness: number }[]
+	>([]);
 
 	// System metrics for status widgets
 	const [cpuUsage, setCpuUsage] = useState(0);
@@ -1628,6 +1632,32 @@ function App() {
 		invoke("set_brightness", { brightness: newVal }).catch(() => {});
 	}, []);
 
+	// Per-monitor brightness (only used when more than one monitor can be controlled)
+	const lastMonitorCallRef = useRef<Record<number, number>>({});
+
+	const handleMonitorBrightnessChange = useCallback((id: number, newVal: number) => {
+		setMonitorBrightness((prev) => prev.map((m) => (m.id === id ? { ...m, brightness: newVal } : m)));
+
+		const now = Date.now();
+		if (now - (lastMonitorCallRef.current[id] ?? 0) < 80) return;
+		lastMonitorCallRef.current[id] = now;
+		invoke("set_monitor_brightness", { id, brightness: newVal }).catch(() => {});
+	}, []);
+
+	// Refresh the monitor list whenever the Command Center opens.
+	useEffect(() => {
+		if (bloomMode !== "command-center") return;
+		let cancelled = false;
+		invoke<{ id: number; name: string; brightness: number }[]>("get_monitors_brightness")
+			.then((list) => {
+				if (!cancelled) setMonitorBrightness(list);
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+		};
+	}, [bloomMode]);
+
 	// Open system tray (unhide taskbar and invoke Win+B)
 	const openSystemTray = useCallback(async (e: React.MouseEvent) => {
 		e.stopPropagation();
@@ -1818,7 +1848,11 @@ function App() {
 		}
 		// Sized to the calendar's week-row count plus the timer's fixed content.
 		if (bloomMode === "calendar") return calendarMonthRows >= 6 ? 305 : 273;
-		if (bloomMode === "command-center") return isHovered ? 230 : 36;
+		if (bloomMode === "command-center") {
+			// Every extra monitor adds one slider row (18px row + 8px gap).
+			const extraRows = Math.max(0, monitorBrightness.length - 1);
+			return isHovered ? 230 + extraRows * 26 : 36;
+		}
 		if (bloomMode === "status") return 36;
 		if (isMusicMode && isHovered) {
 			const hasProgressBar = (mediaInfo.duration_ms ?? 0) > 0;
@@ -2655,7 +2689,37 @@ function App() {
 													<span className="cc-classic-percentage">{Math.round(volume * 100)}%</span>
 												</div>
 
-												{/* Brightness Slider */}
+												{/* Brightness Slider(s) */}
+												{monitorBrightness.length > 1 ? (
+													monitorBrightness.map((monitor, index) => (
+														<div className="cc-classic-slider-row" key={monitor.id}>
+															<div className="cc-classic-slider-label" title={monitor.name}>
+																<BrightnessLowIcon />
+																<span>{`Display ${index + 1}`}</span>
+															</div>
+															<div className="cc-classic-slider-track">
+																<input
+																	type="range"
+																	min="0"
+																	max="100"
+																	step="1"
+																	value={monitor.brightness}
+																	onChange={(e) =>
+																		handleMonitorBrightnessChange(monitor.id, parseInt(e.target.value))
+																	}
+																	onPointerDown={(e) => e.stopPropagation()}
+																	onClick={(e) => e.stopPropagation()}
+																	className="cc-classic-input"
+																/>
+																<div
+																	className="cc-classic-fill"
+																	style={{ width: `${monitor.brightness}%` }}
+																/>
+															</div>
+															<span className="cc-classic-percentage">{monitor.brightness}%</span>
+														</div>
+													))
+												) : (
 												<div className="cc-classic-slider-row">
 													<div className="cc-classic-slider-label">
 														<BrightnessLowIcon />
@@ -2680,6 +2744,7 @@ function App() {
 													</div>
 													<span className="cc-classic-percentage">{currentBrightness}%</span>
 												</div>
+												)}
 											</div>
 										</motion.div>
 									)}

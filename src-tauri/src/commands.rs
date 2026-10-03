@@ -2766,6 +2766,9 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
     if key == "bloom-scale" {
         re_register_appbars(&app, &settings);
     }
+    if key == "bloom-dock-all-monitors" || key == "bloom-dock-enabled" {
+        request_secondary_dock_sync(&app, 250);
+    }
     Ok(())
 }
 
@@ -3002,6 +3005,60 @@ pub struct NetworkStatus {
     /// "wifi" | "ethernet" | "other" | "none" (no internet)
     pub kind: String,
     pub internet: bool,
+    /// Wi-Fi signal quality 0-100 (0 when not on Wi-Fi or unknown).
+    pub signal: u32,
+}
+
+/// Signal quality (0-100) of the first connected Wi-Fi adapter, via the WLAN API.
+fn wifi_signal_quality() -> Option<u32> {
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::NetworkManagement::WiFi::{
+        wlan_interface_state_connected, wlan_intf_opcode_current_connection, WlanCloseHandle,
+        WlanEnumInterfaces, WlanFreeMemory, WlanOpenHandle, WlanQueryInterface,
+        WLAN_CONNECTION_ATTRIBUTES, WLAN_INTERFACE_INFO, WLAN_INTERFACE_INFO_LIST,
+    };
+
+    unsafe {
+        let mut negotiated = 0u32;
+        let mut client = HANDLE(std::ptr::null_mut());
+        if WlanOpenHandle(2, None, &mut negotiated, &mut client) != 0 {
+            return None;
+        }
+
+        let mut result: Option<u32> = None;
+        let mut list_ptr: *mut WLAN_INTERFACE_INFO_LIST = std::ptr::null_mut();
+        if WlanEnumInterfaces(client, None, &mut list_ptr) == 0 && !list_ptr.is_null() {
+            let count = (*list_ptr).dwNumberOfItems as usize;
+            let items =
+                std::ptr::addr_of!((*list_ptr).InterfaceInfo) as *const WLAN_INTERFACE_INFO;
+            for i in 0..count {
+                let info = &*items.add(i);
+                if info.isState != wlan_interface_state_connected {
+                    continue;
+                }
+                let mut size = 0u32;
+                let mut data: *mut core::ffi::c_void = std::ptr::null_mut();
+                let rc = WlanQueryInterface(
+                    client,
+                    &info.InterfaceGuid,
+                    wlan_intf_opcode_current_connection,
+                    None,
+                    &mut size,
+                    &mut data,
+                    None,
+                );
+                if rc == 0 && !data.is_null() {
+                    let attrs = &*(data as *const WLAN_CONNECTION_ATTRIBUTES);
+                    result = Some(attrs.wlanAssociationAttributes.wlanSignalQuality.min(100));
+                    WlanFreeMemory(data as *const core::ffi::c_void);
+                    break;
+                }
+            }
+            WlanFreeMemory(list_ptr as *const core::ffi::c_void);
+        }
+        let _ = WlanCloseHandle(client, None);
+        result
+    }
 }
 
 /// Asks the Windows Network List Manager (the same source the native tray icon
@@ -3089,9 +3146,16 @@ fn network_status_sync() -> NetworkStatus {
         "other"
     };
 
+    let signal = if kind == "wifi" {
+        wifi_signal_quality().unwrap_or(0)
+    } else {
+        0
+    };
+
     NetworkStatus {
         kind: kind.to_string(),
         internet,
+        signal,
     }
 }
 
@@ -3100,6 +3164,303 @@ pub async fn get_network_status() -> Result<NetworkStatus, String> {
     tauri::async_runtime::spawn_blocking(network_status_sync)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn open_ethernet_settings() {
+    unsafe {
+        use windows::Win32::UI::Shell::ShellExecuteA;
+        use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        let _ = ShellExecuteA(
+            None,
+            windows::core::PCSTR(c"open".as_ptr() as *const u8),
+            windows::core::PCSTR(c"ms-settings:network-ethernet".as_ptr() as *const u8),
+            windows::core::PCSTR::null(),
+            windows::core::PCSTR::null(),
+            SW_SHOWNORMAL,
+        );
+    }
+}
+
+/// Lists the monitors whose brightness can be controlled over DDC/CI.
+#[tauri::command]
+pub async fn get_monitors_brightness() -> Result<Vec<crate::services::MonitorBrightness>, String> {
+    tauri::async_runtime::spawn_blocking(crate::services::list_monitors_brightness)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Sets the brightness (0-100 %) of a single monitor (id from `get_monitors_brightness`).
+#[tauri::command]
+pub async fn set_monitor_brightness(id: u32, brightness: u32) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::services::set_monitor_brightness_index(id, brightness)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Dock on additional monitors
+//
+// The main dock window ("dock") lives on the primary monitor and is wired into
+// app-bar / hover logic. For every other monitor an extra, simpler window
+// ("dock-m<N>") is created that loads the same page. Those windows are
+// click-through except over the dock itself, which is polled below.
+// ---------------------------------------------------------------------------
+
+const SECONDARY_DOCK_PREFIX: &str = "dock-m";
+const SECONDARY_DOCK_HEIGHT: f64 = 340.0; // logical px
+
+#[derive(Clone, Copy, Default)]
+struct SecondaryDockState {
+    dock: Option<IntRect>,
+    menu: Option<IntRect>,
+}
+
+static SECONDARY_DOCKS: std::sync::Mutex<Option<HashMap<String, SecondaryDockState>>> =
+    std::sync::Mutex::new(None);
+static SECONDARY_DOCK_THREAD: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[tauri::command]
+pub fn update_secondary_dock_rect(window: Window, rect: IntRect) {
+    if let Ok(mut map) = SECONDARY_DOCKS.lock() {
+        map.get_or_insert_with(HashMap::new)
+            .entry(window.label().to_string())
+            .or_default()
+            .dock = Some(rect);
+    }
+}
+
+#[tauri::command]
+pub fn set_secondary_menu_open(window: Window, open: bool, rect: Option<IntRect>) {
+    if let Ok(mut map) = SECONDARY_DOCKS.lock() {
+        let state = map
+            .get_or_insert_with(HashMap::new)
+            .entry(window.label().to_string())
+            .or_default();
+        state.menu = if open { rect } else { None };
+    }
+}
+
+/// Creates, repositions or removes the extra dock windows so they match the
+/// `bloom-dock-all-monitors` setting and the monitors currently connected.
+pub fn sync_secondary_docks(app: &AppHandle) {
+    let all_monitors = get_setting_str(app, "bloom-dock-all-monitors")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    let dock_enabled = get_setting_str(app, "bloom-dock-enabled")
+        .unwrap_or_else(|| "true".to_string())
+        == "true";
+
+    let existing: Vec<String> = app
+        .webview_windows()
+        .keys()
+        .filter(|label| label.starts_with(SECONDARY_DOCK_PREFIX))
+        .cloned()
+        .collect();
+
+    if !(all_monitors && dock_enabled) {
+        for label in existing {
+            if let Some(win) = app.get_webview_window(&label) {
+                let _ = win.destroy();
+            }
+        }
+        if let Ok(mut map) = SECONDARY_DOCKS.lock() {
+            *map = None;
+        }
+        return;
+    }
+
+    let monitors = app.available_monitors().unwrap_or_default();
+    let primary_pos = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| (m.position().x, m.position().y));
+
+    let mut wanted: Vec<String> = Vec::new();
+    for (index, monitor) in monitors.iter().enumerate() {
+        let pos = monitor.position();
+        if Some((pos.x, pos.y)) == primary_pos {
+            continue;
+        }
+        let label = format!("{}{}", SECONDARY_DOCK_PREFIX, index);
+        wanted.push(label.clone());
+
+        let scale = monitor.scale_factor();
+        let height = (SECONDARY_DOCK_HEIGHT * scale).round() as i32;
+        let width = monitor.size().width as i32;
+        let x = pos.x;
+        let y = pos.y + monitor.size().height as i32 - height;
+
+        let mut newly_created = false;
+        let window = match app.get_webview_window(&label) {
+            Some(win) => win,
+            None => {
+                newly_created = true;
+                let built = tauri::WebviewWindowBuilder::new(
+                    app,
+                    label.clone(),
+                    tauri::WebviewUrl::App("dock.html".into()),
+                )
+                .title("Bloom Dock")
+                .decorations(false)
+                .transparent(true)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .shadow(false)
+                .resizable(false)
+                .maximizable(false)
+                .minimizable(false)
+                .closable(false)
+                .focused(false)
+                .visible(false)
+                .visible_on_all_workspaces(true)
+                .inner_size(400.0, 200.0)
+                .build();
+                match built {
+                    Ok(win) => win,
+                    Err(e) => {
+                        eprintln!("Failed to create dock window {}: {}", label, e);
+                        continue;
+                    }
+                }
+            }
+        };
+
+        // Physical-pixel placement (correct on mixed-DPI setups).
+        if let Ok(hwnd) = window.hwnd() {
+            unsafe {
+                use windows::Win32::Foundation::HWND;
+                use windows::Win32::UI::WindowsAndMessaging::{
+                    SetWindowPos, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOZORDER,
+                };
+                let _ = SetWindowPos(
+                    HWND(hwnd.0 as *mut _),
+                    None,
+                    x,
+                    y,
+                    width,
+                    height,
+                    SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                );
+            }
+            re_assert_topmost(hwnd);
+        }
+        // Only brand-new windows start click-through; for existing ones the
+        // hit-test thread owns that state and must not be fought here.
+        if newly_created {
+            let _ = window.set_ignore_cursor_events(true);
+        }
+        let _ = window.show();
+    }
+
+    for label in existing {
+        if !wanted.contains(&label) {
+            if let Some(win) = app.get_webview_window(&label) {
+                let _ = win.destroy();
+            }
+        }
+    }
+
+    if !wanted.is_empty() {
+        start_secondary_dock_thread(app.clone());
+    }
+}
+
+/// Runs `sync_secondary_docks` off the calling thread (window creation must not
+/// block the main / hook threads).
+pub fn request_secondary_dock_sync(app: &AppHandle, delay_ms: u64) {
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if delay_ms > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+        }
+        sync_secondary_docks(&app);
+    });
+}
+
+#[tauri::command]
+pub fn sync_dock_monitors(app: AppHandle) {
+    request_secondary_dock_sync(&app, 0);
+}
+
+/// Toggles click-through on the extra dock windows: they only capture the mouse
+/// while the cursor is over the dock (or one of its menus).
+fn start_secondary_dock_thread(app: AppHandle) {
+    if SECONDARY_DOCK_THREAD.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    std::thread::spawn(move || {
+        let mut last: HashMap<String, bool> = HashMap::new();
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(30));
+
+            let windows: Vec<(String, tauri::WebviewWindow)> = app
+                .webview_windows()
+                .into_iter()
+                .filter(|(label, _)| label.starts_with(SECONDARY_DOCK_PREFIX))
+                .collect();
+            if windows.is_empty() {
+                SECONDARY_DOCK_THREAD.store(false, Ordering::SeqCst);
+                break;
+            }
+
+            let cursor = match app.cursor_position() {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+
+            for (label, win) in windows {
+                let (pos, size) = match (win.outer_position(), win.outer_size()) {
+                    (Ok(p), Ok(s)) => (p, s),
+                    _ => continue,
+                };
+                let scale = win.scale_factor().unwrap_or(1.0);
+                let in_window = cursor.x >= pos.x as f64
+                    && cursor.x <= (pos.x + size.width as i32) as f64
+                    && cursor.y >= pos.y as f64
+                    && cursor.y <= (pos.y + size.height as i32) as f64;
+
+                let was_interactive = last.get(&label).copied().unwrap_or(false);
+                let mut interactive = false;
+
+                if in_window {
+                    let state = match SECONDARY_DOCKS.lock() {
+                        Ok(guard) => guard
+                            .as_ref()
+                            .and_then(|m| m.get(&label).copied())
+                            .unwrap_or_default(),
+                        Err(_) => SecondaryDockState::default(),
+                    };
+                    let hyst = if was_interactive { 10.0 * scale } else { 0.0 };
+                    for rect in [state.dock, state.menu].into_iter().flatten() {
+                        let pad_x = 5.0 * scale;
+                        let pad_top = 8.0 * scale;
+                        let pad_bottom = 5.0 * scale;
+                        let rx = pos.x as f64 + rect.x as f64 * scale - pad_x - hyst;
+                        let ry = pos.y as f64 + rect.y as f64 * scale - pad_top - hyst;
+                        let rw = rect.width as f64 * scale + pad_x * 2.0 + hyst * 2.0;
+                        let rh = rect.height as f64 * scale + pad_top + pad_bottom + hyst * 2.0;
+                        if cursor.x >= rx
+                            && cursor.x <= rx + rw
+                            && cursor.y >= ry
+                            && cursor.y <= ry + rh
+                        {
+                            interactive = true;
+                        }
+                    }
+                }
+
+                if last.get(&label).copied() != Some(interactive) {
+                    let _ = win.set_ignore_cursor_events(!interactive);
+                    last.insert(label, interactive);
+                }
+            }
+        }
+    });
 }
 
 #[tauri::command]

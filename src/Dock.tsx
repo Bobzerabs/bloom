@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, memo, type ReactElement } from "r
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import "./Dock.css";
 import { initTheme } from "./theme";
 import { useSettingsSync } from "./hooks/useSettingsSync";
@@ -66,6 +67,18 @@ const ITEM_INITIAL = { opacity: 0, scale: 0 };
 const ITEM_ANIMATE = { opacity: 1, scale: 1 };
 const ITEM_EXIT = { opacity: 0, scale: 0 };
 
+// The dock page is also loaded in extra windows ("dock-m<N>") that show the dock
+// on additional monitors. Those windows report their own hit-test regions.
+const IS_SECONDARY_DOCK = (() => {
+	try {
+		return getCurrentWebviewWindow().label.startsWith("dock-m");
+	} catch {
+		return false;
+	}
+})();
+const RECT_COMMAND = IS_SECONDARY_DOCK ? "update_secondary_dock_rect" : "update_dock_rect";
+const MENU_COMMAND = IS_SECONDARY_DOCK ? "set_secondary_menu_open" : "set_menu_open";
+
 const Dock = memo(function Dock() {
 	useEffect(() => {
 		return initTheme();
@@ -92,6 +105,19 @@ const Dock = memo(function Dock() {
 	const [dockTrayEnabled, setDockTrayEnabled] = useState(
 		() => localStorage.getItem("bloom-dock-tray-enabled") !== "false"
 	);
+	const [dockMagnify, setDockMagnify] = useState(
+		() => localStorage.getItem("bloom-dock-magnify") !== "false"
+	);
+	const [dockMagnifySize, setDockMagnifySize] = useState(() => {
+		const v = parseFloat(localStorage.getItem("bloom-dock-magnify-size") || "1.6");
+		return isNaN(v) ? 1.6 : v;
+	});
+	const [dockBounce, setDockBounce] = useState(
+		() => localStorage.getItem("bloom-dock-bounce") !== "false"
+	);
+	const [bouncingApp, setBouncingApp] = useState<string | null>(null);
+	const isDraggingRef = useRef(false);
+	const scaleRef = useRef(1);
 	const [startIcon, setStartIcon] = useState(
 		() => localStorage.getItem("bloom-start-icon") || "default"
 	);
@@ -156,6 +182,7 @@ const Dock = memo(function Dock() {
 	}, [isAnyInteraction]);
 
 	const isHidden =
+		!IS_SECONDARY_DOCK &&
 		!startupAnimating &&
 		((dockMode === "smart" && isOverlapped && interactionState === "none") ||
 			(dockMode === "peek" && interactionState === "none"));
@@ -212,17 +239,135 @@ const Dock = memo(function Dock() {
 		};
 	}, []);
 
+	isDraggingRef.current = isDragging;
+	scaleRef.current = scale;
+
+	// macOS-style magnification: icons grow near the pointer and push their
+	// neighbours apart. Driven by direct style writes (no React re-renders).
+	useEffect(() => {
+		const root = dockRef.current;
+		if (!dockMagnify || !root) return;
+
+		type MagItem = {
+			wrapper: HTMLElement;
+			icon: HTMLElement;
+			center: number;
+			scale: number;
+			shift: number;
+		};
+		let items: MagItem[] = [];
+		let pointerX: number | null = null;
+		let lastMove = 0;
+		let raf = 0;
+
+		const measure = () => {
+			const previous = new Map(items.map((item) => [item.wrapper, item]));
+			items = [];
+			root.querySelectorAll<HTMLElement>(".dock-icon-wrapper").forEach((wrapper) => {
+				const icon = wrapper.querySelector<HTMLElement>(".dock-icon");
+				if (!icon) return;
+				const prev = previous.get(wrapper);
+				const shift = prev ? prev.shift : 0;
+				const rect = wrapper.getBoundingClientRect();
+				items.push({
+					wrapper,
+					icon,
+					// Base (un-shifted) center, in viewport pixels.
+					center: rect.left + rect.width / 2 - shift * scaleRef.current,
+					scale: prev ? prev.scale : 1,
+					shift
+				});
+			});
+		};
+
+		const reset = () => {
+			items.forEach((item) => {
+				item.icon.style.removeProperty("scale");
+				item.wrapper.style.removeProperty("translate");
+				item.wrapper.style.removeProperty("--mag");
+				item.scale = 1;
+				item.shift = 0;
+			});
+		};
+
+		const step = () => {
+			raf = 0;
+			const now = performance.now();
+			// Release if the pointer stopped reporting (e.g. window became click-through).
+			if (pointerX !== null && (isDraggingRef.current || now - lastMove > 400)) pointerX = null;
+
+			const k = scaleRef.current || 1;
+			const radius = 130 * k;
+			let settled = true;
+			const extras: number[] = [];
+			let total = 0;
+
+			for (const item of items) {
+				let target = 1;
+				if (pointerX !== null) {
+					const t = Math.min(Math.abs(pointerX - item.center) / radius, 1);
+					target = 1 + (dockMagnifySize - 1) * Math.pow(Math.cos((t * Math.PI) / 2), 2);
+				}
+				item.scale += (target - item.scale) * 0.28;
+				if (Math.abs(target - item.scale) < 0.003) item.scale = target;
+				else settled = false;
+				const extra = (item.scale - 1) * item.icon.offsetWidth;
+				extras.push(extra);
+				total += extra;
+			}
+
+			if (pointerX === null && settled) {
+				reset();
+				return;
+			}
+
+			let prefix = 0;
+			items.forEach((item, i) => {
+				item.shift = prefix - total / 2 + extras[i] / 2;
+				prefix += extras[i];
+				item.icon.style.setProperty("scale", String(item.scale));
+				item.wrapper.style.setProperty("translate", `${item.shift}px 0`);
+				item.wrapper.style.setProperty("--mag", String(item.scale));
+			});
+			raf = requestAnimationFrame(step);
+		};
+
+		const onMove = (e: MouseEvent) => {
+			if (isDraggingRef.current) return;
+			pointerX = e.clientX;
+			lastMove = performance.now();
+			if (!raf) {
+				measure();
+				raf = requestAnimationFrame(step);
+			}
+		};
+		const onLeave = () => {
+			pointerX = null;
+		};
+
+		root.addEventListener("mousemove", onMove);
+		root.addEventListener("mouseleave", onLeave);
+		return () => {
+			root.removeEventListener("mousemove", onMove);
+			root.removeEventListener("mouseleave", onLeave);
+			if (raf) cancelAnimationFrame(raf);
+			reset();
+		};
+	}, [dockMagnify, dockMagnifySize, isExpanded]);
+
 	useEffect(() => {
 		const updateRect = () => {
 			if (dockRef.current) {
 				const rect = dockRef.current.getBoundingClientRect();
 				const hasPreview = !!previewData;
-				invoke("update_dock_rect", {
+				// Magnified icons pop out above the dock: keep that area interactive.
+				const magExtra = dockMagnify ? Math.round((dockMagnifySize - 1) * 44) : 0;
+				invoke(RECT_COMMAND, {
 					rect: {
 						x: Math.round(rect.x) - (hasPreview ? 500 : 0),
-						y: Math.round(rect.y) - (hasPreview ? 320 : 0),
+						y: Math.round(rect.y) - magExtra - (hasPreview ? 320 : 0),
 						width: Math.round(rect.width) + (hasPreview ? 1000 : 0),
-						height: Math.round(rect.height) + (hasPreview ? 320 : 0)
+						height: Math.round(rect.height) + magExtra + (hasPreview ? 320 : 0)
 					}
 				}).catch(() => {});
 			}
@@ -237,7 +382,7 @@ const Dock = memo(function Dock() {
 			window.removeEventListener("resize", updateRect);
 			observer.disconnect();
 		};
-	}, [pinnedApps, activeApps, isHidden, previewData, scale]);
+	}, [pinnedApps, activeApps, isHidden, previewData, scale, dockMagnify, dockMagnifySize]);
 
 	useEffect(() => {
 		const init = async () => {
@@ -268,6 +413,11 @@ const Dock = memo(function Dock() {
 			const trayEnabled = getVal("bloom-dock-tray-enabled", "true");
 			setDockTrayEnabled(trayEnabled !== "false");
 
+			setDockMagnify(getVal("bloom-dock-magnify", "true") !== "false");
+			const magSize = parseFloat(getVal("bloom-dock-magnify-size", "1.6") || "1.6");
+			if (!isNaN(magSize)) setDockMagnifySize(magSize);
+			setDockBounce(getVal("bloom-dock-bounce", "true") !== "false");
+
 			const startIconVal = getVal("bloom-start-icon", "default") || "default";
 			setStartIcon(startIconVal);
 
@@ -287,11 +437,11 @@ const Dock = memo(function Dock() {
 		init();
 
 		const unlistenOverlap = listen<boolean>("dock-overlap", (event) => {
-			setIsOverlapped(event.payload);
+			if (!IS_SECONDARY_DOCK) setIsOverlapped(event.payload);
 		});
 
 		const unlistenEdgeHover = listen<boolean>("dock-edge-hover", (event) => {
-			setIsEdgeHovered(event.payload);
+			if (!IS_SECONDARY_DOCK) setIsEdgeHovered(event.payload);
 		});
 
 		const unlistenVisibility = listen<boolean>("visibility-change", (event) => {
@@ -316,6 +466,9 @@ const Dock = memo(function Dock() {
 		"bloom-dock-icon-only": setDockIconOnly,
 		"bloom-dock-adaptive": setDockAdaptive,
 		"bloom-dock-tray-enabled": setDockTrayEnabled,
+		"bloom-dock-magnify": setDockMagnify,
+		"bloom-dock-magnify-size": setDockMagnifySize,
+		"bloom-dock-bounce": setDockBounce,
 		"bloom-start-icon": setStartIcon,
 		"bloom-scale": setScale
 	});
@@ -472,6 +625,11 @@ const Dock = memo(function Dock() {
 			} else if (app.hwnd) {
 				await invoke("focus_window", { hwnd: app.hwnd });
 			} else {
+				if (dockBounce) {
+					// macOS-style bounce while the app is starting.
+					setBouncingApp(itemKey(app));
+					setTimeout(() => setBouncingApp(null), 1300);
+				}
 				await invoke("open_app", { appName: app.path });
 			}
 		} catch (e) {
@@ -523,12 +681,12 @@ const Dock = memo(function Dock() {
 	const closeMenu = () => {
 		setContextMenu(null);
 		setActiveSubmenu(null);
-		invoke("set_menu_open", { open: false, rect: null }).catch(() => {});
+		invoke(MENU_COMMAND, { open: false, rect: null }).catch(() => {});
 	};
 
 	const closePopup = () => {
 		setShowAddPopup(false);
-		invoke("set_menu_open", { open: false, rect: null }).catch(() => {});
+		invoke(MENU_COMMAND, { open: false, rect: null }).catch(() => {});
 	};
 
 	useEffect(() => {
@@ -555,7 +713,7 @@ const Dock = memo(function Dock() {
 			open = true;
 		}
 
-		invoke("set_menu_open", { open, rect }).catch(() => {});
+		invoke(MENU_COMMAND, { open, rect }).catch(() => {});
 	}, [contextMenu, showAddPopup, pinnedApps, activeApps, activeSubmenu, scale]);
 
 	const dockItems = useMemo(() => {
@@ -694,6 +852,7 @@ const Dock = memo(function Dock() {
 	useEffect(() => {
 		// Only report true dock-window hover, not the edge-hover from Rust,
 		// to avoid a feedback loop that keeps the dock open.
+		if (IS_SECONDARY_DOCK) return;
 		invoke("set_dock_hovered", { hovered: isDockHovered }).catch(() => {});
 	}, [isDockHovered]);
 
@@ -771,13 +930,16 @@ const Dock = memo(function Dock() {
 
 	const iconVariants = {
 		idle: { y: 0, scale: 1 },
-		hover: { y: -5, scale: 1.1 },
+		hover: dockMagnify ? { y: 0, scale: 1 } : { y: -5, scale: 1.1 },
 		drag: { y: -10, scale: 1.1, opacity: 0.8 },
 		tap: { scale: 0.95 }
 	};
 
 	return (
-		<div className={`dock-container ${isDragging ? "dragging" : ""}`} onClick={closeMenu}>
+		<div
+			className={`dock-container ${isDragging ? "dragging" : ""} ${dockMagnify ? "dock-magnify" : ""}`}
+			onClick={closeMenu}
+		>
 			<div
 				style={{
 					width: "100%",
@@ -998,7 +1160,7 @@ const Dock = memo(function Dock() {
 													<div className="tooltip">{app.name}</div>
 												)}
 												<motion.div
-													className="dock-icon"
+													className={`dock-icon${bouncingApp === itemKey(app) ? " dock-bounce" : ""}`}
 													variants={iconVariants}
 													animate={
 														pressedApp === itemKey(app)
@@ -1145,7 +1307,7 @@ const Dock = memo(function Dock() {
 											<div className="tooltip">{app.name}</div>
 										)}
 										<motion.div
-											className="dock-icon"
+											className={`dock-icon${bouncingApp === itemKey(app) ? " dock-bounce" : ""}`}
 											variants={iconVariants}
 											animate={
 												pressedApp === itemKey(app)
@@ -1452,18 +1614,26 @@ type NetworkKind = "wifi" | "ethernet" | "other" | "none";
 interface NetworkStatus {
 	kind: NetworkKind;
 	internet: boolean;
+	signal: number;
 }
 
-const NETWORK_TITLES: Record<NetworkKind, string> = {
-	wifi: "Network (Wi-Fi)",
-	ethernet: "Network (Ethernet)",
-	other: "Network",
-	none: "No internet"
-};
+function networkTitle(kind: NetworkKind, signal: number): string {
+	switch (kind) {
+		case "wifi":
+			return signal > 0 ? `Network (Wi-Fi, ${signal}%)` : "Network (Wi-Fi)";
+		case "ethernet":
+			return "Network (Ethernet)";
+		case "none":
+			return "No internet";
+		default:
+			return "Network";
+	}
+}
 
-// Mirrors the native Windows icons: Wi-Fi for wireless, a wired "monitor with
-// cable" icon for Ethernet, and a globe with an X when there is no internet.
-function NetworkIcon({ kind }: { kind: NetworkKind }) {
+// Mirrors the native Windows icons: Wi-Fi bars that follow the signal strength
+// for wireless, a wired "monitor with cable" icon for Ethernet, and a globe with
+// an X when there is no internet.
+function NetworkIcon({ kind, signal }: { kind: NetworkKind; signal: number }) {
 	if (kind === "none") {
 		return (
 			<svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1485,11 +1655,13 @@ function NetworkIcon({ kind }: { kind: NetworkKind }) {
 			</svg>
 		);
 	}
+	// Wi-Fi: 0 = dot only, 3 = full strength. Unknown signal (0) shows full bars.
+	const level = signal <= 0 ? 3 : signal >= 70 ? 3 : signal >= 45 ? 2 : signal >= 20 ? 1 : 0;
 	return (
 		<svg viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-			<path d="M5 12.55a11 11 0 0 1 14.08 0" />
-			<path d="M1.42 9a16 16 0 0 1 21.16 0" />
-			<path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+			<path d="M1.42 9a16 16 0 0 1 21.16 0" opacity={level >= 3 ? 1 : 0.3} />
+			<path d="M5 12.55a11 11 0 0 1 14.08 0" opacity={level >= 2 ? 1 : 0.3} />
+			<path d="M8.53 16.11a6 6 0 0 1 6.95 0" opacity={level >= 1 ? 1 : 0.3} />
 			<line x1="12" y1="20" x2="12.01" y2="20" />
 		</svg>
 	);
@@ -1537,7 +1709,10 @@ const TRAY_BUTTONS: { id: string; title: string; command: string; icon?: ReactEl
 ];
 
 const DockTrayButtons = memo(function DockTrayButtons() {
-	const [networkKind, setNetworkKind] = useState<NetworkKind>("wifi");
+	const [network, setNetwork] = useState<{ kind: NetworkKind; signal: number }>({
+		kind: "wifi",
+		signal: 0
+	});
 
 	// Keep the network icon in sync with the real connection state.
 	useEffect(() => {
@@ -1545,7 +1720,13 @@ const DockTrayButtons = memo(function DockTrayButtons() {
 		const refresh = async () => {
 			try {
 				const status = await invoke<NetworkStatus>("get_network_status");
-				if (!cancelled) setNetworkKind(status.kind);
+				if (!cancelled) {
+					setNetwork((prev) =>
+						prev.kind === status.kind && prev.signal === status.signal
+							? prev
+							: { kind: status.kind, signal: status.signal }
+					);
+				}
 			} catch {
 				// keep the last known icon
 			}
@@ -1576,16 +1757,25 @@ const DockTrayButtons = memo(function DockTrayButtons() {
 											return { anchorX: rect.left + rect.width / 2, anchorY: rect.top };
 										})()
 									: undefined;
-							invoke(btn.command, args).catch((err) =>
-								console.error(`Failed to run ${btn.command}:`, err)
+							// Wired connections open the Ethernet page instead of the Wi-Fi list.
+							const command =
+								btn.id === "network" && network.kind === "ethernet"
+									? "open_ethernet_settings"
+									: btn.command;
+							invoke(command, args).catch((err) =>
+								console.error(`Failed to run ${command}:`, err)
 							);
 						}}
 					>
 						<div className="dock-icon">
-							{btn.id === "network" ? <NetworkIcon kind={networkKind} /> : btn.icon}
+							{btn.id === "network" ? (
+								<NetworkIcon kind={network.kind} signal={network.signal} />
+							) : (
+								btn.icon
+							)}
 						</div>
 						<div className="tooltip">
-							{btn.id === "network" ? NETWORK_TITLES[networkKind] : btn.title}
+							{btn.id === "network" ? networkTitle(network.kind, network.signal) : btn.title}
 						</div>
 					</div>
 				))}

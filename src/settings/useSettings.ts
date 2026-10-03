@@ -68,6 +68,19 @@ export function useSettings() {
 	const [dockTrayEnabled, setDockTrayEnabled] = useState(
 		() => localStorage.getItem("bloom-dock-tray-enabled") !== "false"
 	);
+	const [dockMagnify, setDockMagnify] = useState(
+		() => localStorage.getItem("bloom-dock-magnify") !== "false"
+	);
+	const [dockMagnifySize, setDockMagnifySize] = useState(() => {
+		const v = parseFloat(localStorage.getItem("bloom-dock-magnify-size") || "1.6");
+		return isNaN(v) ? 1.6 : v;
+	});
+	const [dockBounce, setDockBounce] = useState(
+		() => localStorage.getItem("bloom-dock-bounce") !== "false"
+	);
+	const [dockAllMonitors, setDockAllMonitors] = useState(
+		() => localStorage.getItem("bloom-dock-all-monitors") === "true"
+	);
 	const [startIcon, setStartIcon] = useState(
 		() => localStorage.getItem("bloom-start-icon") || "default"
 	);
@@ -156,6 +169,10 @@ export function useSettings() {
 			apply(getVal("bloom-dock-preview-enabled"), setDockPreviewEnabled, readBool);
 			apply(getVal("bloom-dock-icon-only"), setDockIconOnly, readBool);
 			apply(getVal("bloom-dock-tray-enabled"), setDockTrayEnabled, readBool);
+			apply(getVal("bloom-dock-magnify"), setDockMagnify, readBool);
+			apply(getVal("bloom-dock-magnify-size"), setDockMagnifySize, parseFloat);
+			apply(getVal("bloom-dock-bounce"), setDockBounce, readBool);
+			apply(getVal("bloom-dock-all-monitors"), setDockAllMonitors, readBool);
 			apply(getVal("bloom-start-icon"), setStartIcon, (v) => v);
 			apply(getVal("bloom-dock-adaptive"), setDockAdaptive, readBool);
 			apply(getVal("bloom-dock-win-number-enabled"), setDockWinNumberEnabled, readBool);
@@ -212,6 +229,10 @@ export function useSettings() {
 		"bloom-dock-enabled": setDockEnabled,
 		"bloom-dock-icon-only": setDockIconOnly,
 		"bloom-dock-tray-enabled": setDockTrayEnabled,
+		"bloom-dock-magnify": setDockMagnify,
+		"bloom-dock-magnify-size": setDockMagnifySize,
+		"bloom-dock-bounce": setDockBounce,
+		"bloom-dock-all-monitors": setDockAllMonitors,
 		"bloom-start-icon": setStartIcon,
 		"bloom-dock-preview-enabled": setDockPreviewEnabled,
 		"bloom-dock-adaptive": setDockAdaptive,
@@ -470,6 +491,29 @@ export function useSettings() {
 		const next = !dockPreviewEnabled;
 		setDockPreviewEnabled(next);
 		saveSetting("bloom-dock-preview-enabled", String(next));
+	};
+
+	const toggleDockMagnify = () => {
+		const next = !dockMagnify;
+		setDockMagnify(next);
+		saveSetting("bloom-dock-magnify", String(next));
+	};
+
+	const handleMagnifySizeChange = (val: number) => {
+		setDockMagnifySize(val);
+		saveSetting("bloom-dock-magnify-size", val.toString());
+	};
+
+	const toggleDockBounce = () => {
+		const next = !dockBounce;
+		setDockBounce(next);
+		saveSetting("bloom-dock-bounce", String(next));
+	};
+
+	const toggleDockAllMonitors = () => {
+		const next = !dockAllMonitors;
+		setDockAllMonitors(next);
+		saveSetting("bloom-dock-all-monitors", String(next));
 	};
 
 	const toggleDockTray = () => {
@@ -747,6 +791,14 @@ export function useSettings() {
 		toggleDockIconOnly,
 		dockTrayEnabled,
 		toggleDockTray,
+		dockMagnify,
+		toggleDockMagnify,
+		dockMagnifySize,
+		handleMagnifySizeChange,
+		dockBounce,
+		toggleDockBounce,
+		dockAllMonitors,
+		toggleDockAllMonitors,
 		startIcon,
 		handleStartIconChange,
 		dockAdaptive,

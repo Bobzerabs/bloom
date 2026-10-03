@@ -1913,6 +1913,124 @@ fn read_physical_monitors_brightness() -> Option<u32> {
     }
 }
 
+/// A monitor whose brightness can be controlled over DDC/CI.
+#[derive(serde::Serialize)]
+pub struct MonitorBrightness {
+    pub id: u32,
+    pub name: String,
+    pub brightness: u32,
+}
+
+/// Visits every physical monitor in enumeration order, passing its index.
+/// The index is stable between calls as long as the monitor setup is unchanged.
+fn for_each_physical_monitor(visit: &mut dyn FnMut(u32, &dxva2::PhysicalMonitor)) {
+    unsafe {
+        use windows::core::BOOL;
+        use windows::Win32::Foundation::{LPARAM, RECT};
+        use windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, HDC, HMONITOR};
+
+        struct VisitContext<'a> {
+            visit: &'a mut dyn FnMut(u32, &dxva2::PhysicalMonitor),
+            index: u32,
+        }
+
+        unsafe extern "system" fn monitor_enum_proc(
+            hmonitor: HMONITOR,
+            _: HDC,
+            _: *mut RECT,
+            lparam: LPARAM,
+        ) -> BOOL {
+            let ctx = &mut *(lparam.0 as *mut VisitContext);
+
+            let mut count = 0u32;
+            if dxva2::GetNumberOfPhysicalMonitorsFromHMONITOR(hmonitor, &mut count).as_bool()
+                && count > 0
+            {
+                let mut monitors =
+                    vec![std::mem::zeroed::<dxva2::PhysicalMonitor>(); count as usize];
+                if dxva2::GetPhysicalMonitorsFromHMONITOR(hmonitor, count, monitors.as_mut_ptr())
+                    .as_bool()
+                {
+                    for mon in &monitors {
+                        if mon.handle == 0 {
+                            continue;
+                        }
+                        (ctx.visit)(ctx.index, mon);
+                        ctx.index += 1;
+                    }
+                    let _ = dxva2::DestroyPhysicalMonitors(count, monitors.as_mut_ptr());
+                }
+            }
+            true.into()
+        }
+
+        let mut ctx = VisitContext { visit, index: 0 };
+        let _ = EnumDisplayMonitors(
+            None,
+            None,
+            Some(monitor_enum_proc),
+            LPARAM(&mut ctx as *mut VisitContext as isize),
+        );
+    }
+}
+
+/// Lists the DDC/CI capable monitors with their name and current brightness (0-100 %).
+pub fn list_monitors_brightness() -> Vec<MonitorBrightness> {
+    let mut out: Vec<MonitorBrightness> = Vec::new();
+    for_each_physical_monitor(&mut |index, mon| {
+        let (mut min_b, mut cur_b, mut max_b) = (0u32, 0u32, 0u32);
+        let ok = unsafe {
+            dxva2::GetMonitorBrightness(mon.handle, &mut min_b, &mut cur_b, &mut max_b).as_bool()
+        };
+        if ok && max_b > min_b {
+            let len = mon
+                .description
+                .iter()
+                .position(|&c| c == 0)
+                .unwrap_or(mon.description.len());
+            let mut name = String::from_utf16_lossy(&mon.description[..len])
+                .trim()
+                .to_string();
+            if name.is_empty() {
+                name = format!("Monitor {}", index + 1);
+            }
+            let pct = (cur_b.saturating_sub(min_b) * 100) / (max_b - min_b);
+            out.push(MonitorBrightness {
+                id: index,
+                name,
+                brightness: pct.min(100),
+            });
+        }
+    });
+    out
+}
+
+/// Sets the brightness (0-100 %) of the single monitor with the given index.
+pub fn set_monitor_brightness_index(index: u32, brightness: u32) {
+    let brightness = brightness.min(100);
+    for_each_physical_monitor(&mut |i, mon| {
+        if i != index {
+            return;
+        }
+        unsafe {
+            let (mut min_b, mut cur_b, mut max_b) = (0u32, 0u32, 100u32);
+            let value = if dxva2::GetMonitorBrightness(
+                mon.handle, &mut min_b, &mut cur_b, &mut max_b,
+            )
+            .as_bool()
+                && max_b > min_b
+            {
+                min_b + (brightness * (max_b - min_b) + 50) / 100
+            } else {
+                brightness
+            };
+            if !dxva2::SetMonitorBrightness(mon.handle, value).as_bool() {
+                brightness_log("SetMonitorBrightness failed (monitor may not support DDC/CI)");
+            }
+        }
+    });
+}
+
 pub fn setup_brightness_worker() {
     let (tx, rx) = channel::<u32>();
     let _ = BRIGHTNESS_SENDER.set(tx);
@@ -3507,6 +3625,8 @@ fn reposition_all_windows(app_handle: &AppHandle) {
             re_assert_topmost(hwnd);
         }
     }
+    // Monitors may have been added / removed / rearranged: refresh extra docks.
+    crate::commands::request_secondary_dock_sync(app_handle, 800);
 }
 
 fn reposition_autohide_dock(app_handle: &AppHandle, dock_win: tauri::WebviewWindow) {

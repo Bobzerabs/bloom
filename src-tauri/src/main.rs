@@ -146,6 +146,12 @@ fn main() {
             capture_window_thumbnail,
             get_wifi_state,
             get_network_status,
+            open_ethernet_settings,
+            get_monitors_brightness,
+            set_monitor_brightness,
+            update_secondary_dock_rect,
+            set_secondary_menu_open,
+            sync_dock_monitors,
             set_wifi_state,
             get_bluetooth_state,
             set_bluetooth_state,
@@ -289,6 +295,7 @@ fn main() {
 
             setup_mouse_hook(app.handle().clone());
             setup_display_change_monitor(app.handle().clone());
+            request_secondary_dock_sync(app.handle(), 3000);
             setup_window_change_hook(app.handle().clone());
             {
                 let _ = crate::state::THUMBNAIL_CACHE

@@ -201,6 +201,14 @@ function SettingsApp() {
 							toggleDockIconOnly={settings.toggleDockIconOnly}
 							dockTrayEnabled={settings.dockTrayEnabled}
 							toggleDockTray={settings.toggleDockTray}
+							dockMagnify={settings.dockMagnify}
+							toggleDockMagnify={settings.toggleDockMagnify}
+							dockMagnifySize={settings.dockMagnifySize}
+							handleMagnifySizeChange={settings.handleMagnifySizeChange}
+							dockBounce={settings.dockBounce}
+							toggleDockBounce={settings.toggleDockBounce}
+							dockAllMonitors={settings.dockAllMonitors}
+							toggleDockAllMonitors={settings.toggleDockAllMonitors}
 							dockAdaptive={settings.dockAdaptive}
 							toggleDockAdaptive={settings.toggleDockAdaptive}
 							dockWinNumberEnabled={settings.dockWinNumberEnabled}

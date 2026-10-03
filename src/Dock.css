@@ -856,3 +856,46 @@ body {
 	background: transparent;
 	box-shadow: none;
 }
+
+/* macOS-style magnification (scale / translate are driven from Dock.tsx) */
+.dock-magnify .dock-icon {
+	transform-origin: 50% 100%;
+}
+
+.dock-magnify .dock-icon-wrapper .tooltip {
+	margin-top: calc((var(--mag, 1) - 1) * -40px);
+}
+
+.dock-magnify .dock-icon-wrapper .preview-tooltip {
+	margin-bottom: calc((var(--mag, 1) - 1) * 40px);
+}
+
+/* macOS-style bounce while an app is launching */
+@keyframes dock-bounce {
+	0%,
+	100% {
+		translate: 0 0;
+	}
+	18% {
+		translate: 0 -26px;
+	}
+	36% {
+		translate: 0 0;
+	}
+	52% {
+		translate: 0 -14px;
+	}
+	68% {
+		translate: 0 0;
+	}
+	80% {
+		translate: 0 -6px;
+	}
+	90% {
+		translate: 0 0;
+	}
+}
+
+.dock-icon.dock-bounce {
+	animation: dock-bounce 1.2s ease-out 1;
+}
