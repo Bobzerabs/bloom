@@ -1,7 +1,22 @@
 name: Build EXE (custom)
 
+# Runs automatically on every push to main, and can still be started by hand
+# from Actions -> Build EXE (custom) -> Run workflow.
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "website/**"
   workflow_dispatch:
+
+# A newer push cancels a build that is still running.
+concurrency:
+  group: build-exe-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -23,14 +38,33 @@ jobs:
       - name: Install frontend dependencies
         run: bun install
 
+      # Build only the NSIS installer and skip updater signing,
+      # so no private signing key is needed on a fork.
       - name: Build Bloom
         shell: bash
         run: bun run tauri build --bundles nsis --config '{"bundle":{"createUpdaterArtifacts":false}}'
 
-      - name: Upload installer
+      - name: Upload installer (Artifacts)
         uses: actions/upload-artifact@v4
         with:
           name: bloom-installer
           path: |
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bloom.exe
+
+      # Keeps one rolling release called "custom-latest" with the newest installer,
+      # so it can be downloaded from the Releases page (right side of the repo home).
+      - name: Publish to Releases (custom-latest)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          INSTALLER=$(ls src-tauri/target/release/bundle/nsis/*.exe | head -n 1)
+          gh release delete custom-latest --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
+          gh release create custom-latest "$INSTALLER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Bloom custom build ($SHORT_SHA)" \
+            --notes "Automatic build of commit $SHORT_SHA. Download the setup .exe below." \
+            --prerelease
