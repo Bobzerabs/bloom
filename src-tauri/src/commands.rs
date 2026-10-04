@@ -3435,14 +3435,99 @@ pub fn sync_dock_monitors(app: AppHandle) {
 
 /// Toggles click-through on the extra dock windows: they only capture the mouse
 /// while the cursor is over the dock (or one of its menus).
+/// True when a regular, visible, non-minimized app window (not Bloom, not the
+/// desktop / shell) overlaps the given screen region (physical px).
+fn app_window_overlaps(region: (i32, i32, i32, i32)) -> bool {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::Graphics::Dwm::{
+        DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetClassNameW, GetWindowLongW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+        GWL_EXSTYLE, WS_EX_TOOLWINDOW,
+    };
+
+    struct Ctx {
+        region: (i32, i32, i32, i32),
+        pid: u32,
+        found: bool,
+    }
+
+    unsafe extern "system" fn proc(hwnd: HWND, lparam: LPARAM) -> windows::core::BOOL {
+        let ctx = &mut *(lparam.0 as *mut Ctx);
+        if !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() {
+            return true.into();
+        }
+        if (GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOOLWINDOW.0) != 0 {
+            return true.into();
+        }
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid == ctx.pid {
+            return true.into();
+        }
+        let mut cloaked = 0u32;
+        let _ = DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_CLOAKED,
+            &mut cloaked as *mut _ as *mut _,
+            std::mem::size_of::<u32>() as u32,
+        );
+        if cloaked != 0 {
+            return true.into();
+        }
+        let mut class = [0u16; 64];
+        let n = GetClassNameW(hwnd, &mut class) as usize;
+        let name = String::from_utf16_lossy(&class[..n.min(64)]);
+        if matches!(
+            name.as_str(),
+            "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd"
+        ) {
+            return true.into();
+        }
+        let mut r = RECT::default();
+        if DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut r as *mut _ as *mut _,
+            std::mem::size_of::<RECT>() as u32,
+        )
+        .is_err()
+        {
+            return true.into();
+        }
+        let (l, t, rr, b) = ctx.region;
+        if r.right > l && r.left < rr && r.bottom > t && r.top < b && r.right - r.left > 80 {
+            ctx.found = true;
+            return false.into();
+        }
+        true.into()
+    }
+
+    let mut ctx = Ctx {
+        region,
+        pid: std::process::id(),
+        found: false,
+    };
+    unsafe {
+        let _ = EnumWindows(Some(proc), LPARAM(&mut ctx as *mut Ctx as isize));
+    }
+    ctx.found
+}
+
 fn start_secondary_dock_thread(app: AppHandle) {
     if SECONDARY_DOCK_THREAD.swap(true, Ordering::SeqCst) {
         return;
     }
     std::thread::spawn(move || {
         let mut last: HashMap<String, bool> = HashMap::new();
+        // Smart / Peek support: (edge hovered, window overlaps the dock) per dock.
+        let mut hide_state: HashMap<String, (bool, bool)> = HashMap::new();
+        let mut overlap_cache: HashMap<String, bool> = HashMap::new();
+        let mut tick: u32 = 0;
         loop {
             std::thread::sleep(std::time::Duration::from_millis(30));
+            tick = tick.wrapping_add(1);
 
             let windows: Vec<(String, tauri::WebviewWindow)> = app
                 .webview_windows()
@@ -3472,6 +3557,46 @@ fn start_secondary_dock_thread(app: AppHandle) {
 
                 let was_interactive = last.get(&label).copied().unwrap_or(false);
                 let mut interactive = false;
+
+                // Edge hover + "window covers the dock" for Smart / Peek modes.
+                {
+                    let dock_rect = SECONDARY_DOCKS
+                        .lock()
+                        .ok()
+                        .and_then(|g| g.as_ref().and_then(|m| m.get(&label).copied()))
+                        .and_then(|st| st.dock);
+                    let (dx0, dx1) = match dock_rect {
+                        Some(r) => (
+                            pos.x as f64 + r.x as f64 * scale - 40.0 * scale,
+                            pos.x as f64 + (r.x + r.width) as f64 * scale + 40.0 * scale,
+                        ),
+                        None => (pos.x as f64, (pos.x + size.width as i32) as f64),
+                    };
+                    let bottom = (pos.y + size.height as i32) as f64;
+                    let edge = cursor.y >= bottom - 6.0 * scale
+                        && cursor.y <= bottom + 2.0 * scale
+                        && cursor.x >= dx0
+                        && cursor.x <= dx1;
+
+                    if tick % 10 == 0 || !overlap_cache.contains_key(&label) {
+                        let region = (
+                            dx0 as i32,
+                            (bottom - 64.0 * scale) as i32,
+                            dx1 as i32,
+                            bottom as i32,
+                        );
+                        overlap_cache.insert(label.clone(), app_window_overlaps(region));
+                    }
+                    let overlapped = overlap_cache.get(&label).copied().unwrap_or(false);
+                    if hide_state.get(&label).copied() != Some((edge, overlapped)) {
+                        hide_state.insert(label.clone(), (edge, overlapped));
+                        let _ = app.emit_to(
+                            label.as_str(),
+                            "secondary-dock-state",
+                            serde_json::json!({ "edge": edge, "overlapped": overlapped }),
+                        );
+                    }
+                }
 
                 if in_window {
                     let state = match SECONDARY_DOCKS.lock() {

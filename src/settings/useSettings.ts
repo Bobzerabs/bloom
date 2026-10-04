@@ -1,3 +1,4 @@
+import { getLanguage } from "../i18n";
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, emit } from "@tauri-apps/api/event";
@@ -299,7 +300,7 @@ export function useSettings() {
 		const timeout = setTimeout(async () => {
 			try {
 				const res = await fetch(
-					`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=5&language=en&format=json`
+					`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=5&language=${getLanguage()}&format=json`
 				);
 				const data = await res.json();
 				if (data.results && data.results.length > 0) {

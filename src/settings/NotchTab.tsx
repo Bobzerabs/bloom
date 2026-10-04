@@ -150,13 +150,13 @@ export function NotchTab({
 									className={mediaLayout === "classic" ? "active" : ""}
 									onClick={() => toggleMediaLayout("classic")}
 								>
-									Classic
+									{t("Classic")}
 								</span>
 								<span
 									className={mediaLayout === "compact" ? "active" : ""}
 									onClick={() => toggleMediaLayout("compact")}
 								>
-									Compact
+									{t("Compact")}
 								</span>
 							</div>
 						</SettingRow>

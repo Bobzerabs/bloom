@@ -187,7 +187,6 @@ const Dock = memo(function Dock() {
 	}, [isAnyInteraction]);
 
 	const isHidden =
-		!IS_SECONDARY_DOCK &&
 		!startupAnimating &&
 		((dockMode === "smart" && isOverlapped && interactionState === "none") ||
 			(dockMode === "peek" && interactionState === "none"));
@@ -458,6 +457,16 @@ const Dock = memo(function Dock() {
 			if (!IS_SECONDARY_DOCK) setIsOverlapped(event.payload);
 		});
 
+		// Extra-monitor docks get their own edge-hover / overlap state from Rust.
+		const unlistenSecondary = listen<{ edge: boolean; overlapped: boolean }>(
+			"secondary-dock-state",
+			(event) => {
+				if (!IS_SECONDARY_DOCK) return;
+				setIsEdgeHovered(event.payload.edge);
+				setIsOverlapped(event.payload.overlapped);
+			}
+		);
+
 		const unlistenEdgeHover = listen<boolean>("dock-edge-hover", (event) => {
 			if (!IS_SECONDARY_DOCK) setIsEdgeHovered(event.payload);
 		});
@@ -473,6 +482,7 @@ const Dock = memo(function Dock() {
 		return () => {
 			unlistenOverlap.then((f) => f());
 			unlistenEdgeHover.then((f) => f());
+			unlistenSecondary.then((f) => f());
 			unlistenVisibility.then((f) => f());
 			unlistenMaximized.then((f) => f());
 		};

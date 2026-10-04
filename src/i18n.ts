@@ -199,6 +199,8 @@ const pt: Record<string, string> = {
 	"Media Layout": "Layout de mídia",
 	"macOS Open/Close Animation": "Animação de abrir/fechar do macOS",
 	"Icons of apps grow in when opened and shrink away when closed": "Os ícones dos apps crescem ao abrir e encolhem ao fechar",
+	"Classic": "Clássico",
+	"Compact": "Compacto",
 	"Mostly Clear": "Predomínio de sol",
 	"Music Mode": "Modo música",
 	"Net": "Rede",

@@ -920,8 +920,9 @@ input:checked + .slider:before {
 	text-transform: uppercase;
 	letter-spacing: 0.5px;
 	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.25));
-	width: 40px;
+	width: 72px;
 	flex-shrink: 0;
+	white-space: nowrap;
 }
 
 .widget-config-chips {
