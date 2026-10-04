@@ -2766,6 +2766,9 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
     if key == "bloom-scale" {
         re_register_appbars(&app, &settings);
     }
+    if key == "bloom-dock-openclose-anim" {
+        crate::genie::ensure_window_async(&app);
+    }
     if key == "bloom-dock-all-monitors" || key == "bloom-dock-enabled" {
         request_secondary_dock_sync(&app, 250);
     }

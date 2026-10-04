@@ -467,6 +467,35 @@ const Dock = memo(function Dock() {
 			}
 		);
 
+		// The window genie effect asks where an app's icon is, to suck the window into it.
+		const unlistenGenie = listen<{ kind: string; hwnd: number; exe: string }>(
+			"genie-request",
+			(event) => {
+				const exe = (event.payload.exe || "").toLowerCase();
+				const base = exe.split("\\").pop() || "";
+				let target: HTMLElement | null = null;
+				document.querySelectorAll<HTMLElement>(".dock-icon-wrapper[data-exe]").forEach((el) => {
+					if (target) return;
+					const v = el.dataset.exe || "";
+					if (v && (v === exe || (base && v.split("\\").pop() === base))) target = el;
+				});
+				const box = (target as HTMLElement | null) ?? dockRef.current;
+				let icon: { x: number; y: number; w: number; h: number } | null = null;
+				if (box) {
+					const r = box.getBoundingClientRect();
+					icon = target
+						? { x: r.x, y: r.y, w: r.width, h: r.height }
+						: { x: r.x + r.width / 2 - 20, y: r.y + r.height / 2 - 20, w: 40, h: 40 };
+				}
+				invoke("genie_play", {
+					kind: event.payload.kind,
+					hwnd: event.payload.hwnd,
+					label: getCurrentWebviewWindow().label,
+					icon
+				}).catch(() => {});
+			}
+		);
+
 		const unlistenEdgeHover = listen<boolean>("dock-edge-hover", (event) => {
 			if (!IS_SECONDARY_DOCK) setIsEdgeHovered(event.payload);
 		});
@@ -483,6 +512,7 @@ const Dock = memo(function Dock() {
 			unlistenOverlap.then((f) => f());
 			unlistenEdgeHover.then((f) => f());
 			unlistenSecondary.then((f) => f());
+			unlistenGenie.then((f) => f());
 			unlistenVisibility.then((f) => f());
 			unlistenMaximized.then((f) => f());
 		};
@@ -1157,6 +1187,7 @@ const Dock = memo(function Dock() {
 										>
 											<motion.div
 												className="dock-icon-wrapper"
+												data-exe={(app.executable || app.path || "").toLowerCase()}
 												initial={ITEM_INITIAL}
 												animate={ITEM_ANIMATE}
 												exit={ITEM_EXIT}
@@ -1394,6 +1425,7 @@ const Dock = memo(function Dock() {
 														}
 											}
 											className="dock-icon-wrapper"
+											data-exe={(app.executable || app.path || "").toLowerCase()}
 											onContextMenu={(e) => handleContextMenu(e, app)}
 											onMouseEnter={() => setHoveredApp(itemKey(app))}
 											onMouseLeave={() => {

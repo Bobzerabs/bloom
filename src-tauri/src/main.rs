@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod genie;
 mod services;
 mod state;
 mod types;
@@ -96,6 +97,10 @@ fn main() {
             open_notification_center,
             open_system_tray,
             open_task_manager,
+            genie::genie_play,
+            genie::genie_reveal,
+            genie::genie_done,
+            genie::genie_ready,
             set_ignore_cursor_events,
             set_window_height,
             resize_settings_window,
@@ -306,6 +311,7 @@ fn main() {
                 let _ = crate::state::INSTALLED_APPS_CACHE.set(std::sync::Mutex::new(Vec::new()));
             }
             setup_thumbnail_capture(app.handle().clone());
+            genie::setup(app.handle().clone());
             trigger_app_scan();
             let tx = setup_system_worker(app.handle().clone());
             let _ = COMMAND_SENDER.set(tx.clone());

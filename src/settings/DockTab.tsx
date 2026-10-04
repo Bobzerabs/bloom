@@ -235,7 +235,7 @@ export function DockTab({
 						<SettingRow
 							icon={Sparkles}
 							label="macOS Open/Close Animation"
-							desc="Icons of apps grow in when opened and shrink away when closed"
+							desc="Genie effect on windows (open, minimize, close) plus icon animations"
 						>
 							<label className="toggle-switch">
 								<input
